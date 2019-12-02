@@ -5,12 +5,17 @@ from bs4 import BeautifulSoup
 from bs4.element import Comment
 import urllib.request
 import re
+import time
 from nltk.corpus import stopwords
 import multiprocessing as mp
 import warnings
 warnings.filterwarnings('ignore')
+ct0 = time.perf_counter()
+print("14:Starting to read dictionary and stopwords")
 nlp = spacy.load("en_core_web_md")
 sr = stopwords.words('english')
+et = time.perf_counter() - ct0
+print("18:Finished reading: {:0.2f} sec".format(et))
 
 
 def read_words():
@@ -48,14 +53,13 @@ def tokenize(text):
     for i in range(lt):
         w = t[i]
         lw = len(w)
-        if (lw > 3):
+        if lw > 3:
             t0.append(w)
     return t0
 
 
 def Lemmatise(text):
     global nlp,sr
-#    print("nlp:", nlp)
     # Implementing lemmatization
     p = re.compile('[a-zA-Z]')
     lt = []
@@ -74,26 +78,6 @@ def CountWords(t):
     global counts
     from collections import Counter
     counts = Counter(t)
-
-def par_ReadUrls(m,n,pairs):
-#    print("78:",pairs)
-#    print("79:i,j:", m,n)
-    for i in range(m,n):
-        pair = pairs[i]
-        i_j = pair.split(',')
-        i = int(i_j[0])
-        j = int(i_j[1])
-#        print("85:i,j:",i,j)
-        ReadUrls(i, j)
-        st = SimilarityScore(str(title1), str(title2))
-        sk = SimilarityScore(kw1, kw2)
-        sd = SimilarityScore(desc1, desc2)
-        dv = Domain_match(urls[i], urls[j])
-        GetDocSegments()
-        sc = CalculateSimilarity(i, j, nurls)
-        s = round(sc, 2)
-        matrix[i][j] = s
-        print("96: i-j:",i, j, s)
 
 
 def ReadUrls(i, j):
@@ -160,7 +144,7 @@ def GetDocSegments():
 
 
 def CalculateSimilarity(i, j, nurls):
-    sim = 0.00
+#    sim = 0.00
     sims = []
     tot = 0.00
     k = nurls
@@ -187,7 +171,7 @@ def CalculateWordFrequency():
     tw1f = []
     tw2f = []
     # ------------t1--------------
-    lw = len(t1w)
+#    lw = len(t1w)
     tot = 0
     # Count the total number of words
     for i in range(0, 3):
@@ -202,7 +186,7 @@ def CalculateWordFrequency():
         fw = f + ":" + w
         tw1f.append(fw)
     # ------------t2--------------
-    lw = len(t2w)
+#    lw = len(t2w)
     tot = 0
     # Count the total number of words
     for i in range(0, 3):
@@ -213,7 +197,7 @@ def CalculateWordFrequency():
         c = int(fields[0])
         w = fields[1]
         f = str(round(float(c / tot * 100), 2))
-        fw = f + ":" + w
+#        fw = f + ":" + w
         tw2f.append(w)
     # Compare the two to get the word frequency
     lw1 = len(tw1f)
@@ -288,7 +272,7 @@ def OneComparison():
     i = 0
     j = 2
     ReadUrls(i, j)
-    sk = 0.00
+#    sk = 0.00
     st = SimilarityScore(str(title1), str(title2))
     sk = SimilarityScore(kw1, kw2)
     sd = SimilarityScore(desc1, desc2)
@@ -308,11 +292,6 @@ def one_pair(i, j):
     s = round(sc, 2)
     matrix[i][j] = s
     print(i, j, s)
-
-
-def par_one_pair(i, j, pairs):
-#    print("i,j:",i,j)
-    par_ReadUrls(i, j, pairs)
 
 
 def MultipleComparisons():
@@ -375,54 +354,73 @@ def sequential():
         print('')
 
 
+def par_ReadUrls(m,n,pairs,w,C_1D):
+    ct1 = time.perf_counter()
+    # print("360:Worker{} Starting to process the comparisons:{},{}".format(w,m,n))
+    for k in range(m,n):
+        pair = pairs[k]
+        i_j = pair.split(',')
+        i = int(i_j[0])
+        j = int(i_j[1])
+        ReadUrls(i, j)
+        st = SimilarityScore(str(title1), str(title2))
+        sk = SimilarityScore(kw1, kw2)
+        sd = SimilarityScore(desc1, desc2)
+        dv = Domain_match(urls[i], urls[j])
+        GetDocSegments()
+        sc = CalculateSimilarity(i, j, nurls)
+        s = round(sc, 2)
+        C_1D[k] = s
+    et1 = time.perf_counter() - ct1 - ct0
+    print("379:Worker{} Finished comparisons: {:0.2f} sec".format(w,et1))
+
+
 def par_compare():
-#    read_words()
     pairs = []
     for i in range(nurls):
         for j in range(i + 1, nurls):
             k = str(i) + ',' + str(j)
             pairs.append(k)
-#    print(len(pairs))
-#    print(pairs)
-#    num_workers = mp.cpu_count()
-    num_workers = 2
-#    print(num_workers)
+    C_1D = mp.RawArray('d', len(pairs))  # flat version of matrix C. 'd' = number
+    num_workers = mp.cpu_count()
     chunk_size = len(pairs) // num_workers + 1
     n_chunks = len(pairs) // chunk_size
-#    print("chunk_size,n_chunks", chunk_size, n_chunks)
 
     workers = []
     for w in range(n_chunks):
         b = w * chunk_size
         e = b + chunk_size
-        print(w, b, e)
-        workers.append(mp.Process(target=_par_worker, args=(b, e, pairs)))
+        workers.append(mp.Process(target=par_ReadUrls, args=(b, e, pairs, w, C_1D)))
     try:
         if e:
             r = len(pairs) - e
         if r > 0:
-            workers.append(mp.Process(target=_par_worker, args=(e, len(pairs), pairs)))
+            w += 1
+            workers.append(mp.Process(target=par_ReadUrls, args=(e, len(pairs), pairs, w, C_1D)))
     except:
         pass
-#    print(workers)
 
     for w in workers:
-#        print(w)
         w.start()
     for w in workers:
-#        print("ending:", w)
         w.join()
+    k = 0
 
-
-def _par_worker(i,j, pairs):
-#    print("396:", pairs)
-#    one_pair(i, j)
-    par_one_pair(i, j, pairs)
-
-
-#    pass
-# - Functions - End
-# Globals
+    nn = nurls
+    matrix = [[0] * nurls for i in range(nn)]
+    for i in range(nn):
+        for j in range(i+1,nn):
+            matrix[i][j] = C_1D[k]
+            k += 1
+        print('')
+    print(matrix)
+    for i in range(nn):
+        print("{},".format(i),end='')
+        for j in range(nn):
+            print("{},".format(matrix[i][j]), end='')
+        print('')
+# - Functions - End -----------------------------------------------------------------
+# Globals - Begin
 urls = [
     "https://www.ands.org.au/working-with-data/metadata/geospatial-data-and-metadata",
     "https://www.ands.org.au/guides/geospatial",
@@ -459,17 +457,8 @@ urls = [
     "https://en.wikipedia.org/wiki/Titanic_(1997_film)",
     "https://en.wikipedia.org/wiki/Titanic_(1953_film)",
 ]
-urls_0 = [
-    "https://www.ands.org.au/working-with-data/metadata/geospatial-data-and-metadata",
-    "https://www.ands.org.au/guides/geospatial",
-    "https://www.safe.com/what-is/spatial-data/",
-    "https://gisgeography.com/what-is-geodata-geospatial-data/",
-    "https://www.mathworks.com/help/map/what-is-geospatial-data.html",
-    "https://www.veris.com.au/our-services/geospatial-data-management/",
-]
 nurls = len(urls)
-nurls = 10
-matrix = [[' '] * nurls for i in range(nurls)]
+nurls = 6
 # Globals - End
 #
 # -----------------------------------------------------------------------------------------------------------------
@@ -480,4 +469,4 @@ matrix = [[' '] * nurls for i in range(nurls)]
 #sequential()
 
 if __name__ == '__main__':
-    parallel_result = par_compare()  # "warm up"
+    par_compare()
