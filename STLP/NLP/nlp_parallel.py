@@ -6,10 +6,11 @@ from bs4.element import Comment
 import urllib.request
 import re
 from nltk.corpus import stopwords
+import multiprocessing as mp
 import warnings
-
 warnings.filterwarnings('ignore')
-sr = []
+nlp = spacy.load("en_core_web_md")
+sr = stopwords.words('english')
 
 
 def read_words():
@@ -53,20 +54,19 @@ def tokenize(text):
 
 
 def Lemmatise(text):
-    global nlp, sr
+    global nlp,sr
+#    print("nlp:", nlp)
     # Implementing lemmatization
     p = re.compile('[a-zA-Z]')
     lt = []
     lem = nlp(text)
-    # finding lemma for each word
+    # finding lemma for each wordx
     for word in lem:
-        #        print(word.text, word.lemma_)
         if (p.findall(str(word))):
             lemma = word.lemma_.lower()
             if (len(lemma) > 3):
                 if str(lemma) not in (sr):
                     lt.append(lemma)
-    #    print(t1)
     return lt
 
 
@@ -75,13 +75,30 @@ def CountWords(t):
     from collections import Counter
     counts = Counter(t)
 
+def par_ReadUrls(m,n,pairs):
+#    print("78:",pairs)
+#    print("79:i,j:", m,n)
+    for i in range(m,n):
+        pair = pairs[i]
+        i_j = pair.split(',')
+        i = int(i_j[0])
+        j = int(i_j[1])
+#        print("85:i,j:",i,j)
+        ReadUrls(i, j)
+        st = SimilarityScore(str(title1), str(title2))
+        sk = SimilarityScore(kw1, kw2)
+        sd = SimilarityScore(desc1, desc2)
+        dv = Domain_match(urls[i], urls[j])
+        GetDocSegments()
+        sc = CalculateSimilarity(i, j, nurls)
+        s = round(sc, 2)
+        matrix[i][j] = s
+        print("96: i-j:",i, j, s)
 
-#    print(counts)
 
 def ReadUrls(i, j):
     url1 = urls[i]
     url2 = urls[j]
-    #    print(urls[i], urls[j])
     global html1, html2, t1, t2, t1w, t2w, t1t, t2t, kw1, desc1, kw2, desc2, title1, title2
     t1 = []
     t2 = []
@@ -202,6 +219,7 @@ def CalculateWordFrequency():
     lw1 = len(tw1f)
     lw2 = len(tw2f)
     mf = 0.00
+    tf = 0.00
     for i in range(lw2):
         w2 = tw2f[i]
         tf = 0.00
@@ -210,8 +228,7 @@ def CalculateWordFrequency():
             f1 = float(fields[0])
             w1 = fields[1]
             tf += f1
-            if (w1 == w2):
-                #                print(w1,w2)
+            if w1 == w2:
                 mf += f1
     freq = round(mf / tf, 2)
     return freq
@@ -228,12 +245,10 @@ def tag_visible(element):
 
 def text_from_html(body):
     soup = BeautifulSoup(body, 'html.parser')
-    #    title = ''
     keywords = ''
     description = ''
     title = soup.title.string
     for tag in soup.find_all("meta"):
-        #        print(tag)
         if tag.get("name", None) == "og:title":
             title = tag.get("content", None)
             pass
@@ -247,8 +262,6 @@ def text_from_html(body):
 
     texts = soup.findAll(text=True)
     visible_texts = filter(tag_visible, texts)
-    #    title = soup.title.string
-    #    print(title, keywords, description)
     return u" ".join(t.strip() for t in visible_texts), title, keywords, description
 
 
@@ -284,6 +297,7 @@ def OneComparison():
 
 
 def one_pair(i, j):
+    print("i,j:",i,j)
     ReadUrls(i, j)
     st = SimilarityScore(str(title1), str(title2))
     sk = SimilarityScore(kw1, kw2)
@@ -296,16 +310,18 @@ def one_pair(i, j):
     print(i, j, s)
 
 
+def par_one_pair(i, j, pairs):
+#    print("i,j:",i,j)
+    par_ReadUrls(i, j, pairs)
+
+
 def MultipleComparisons():
     global o
     h = "#,"
     o = ""
     for i in range(nurls):
         h += str(i) + ','
-    # h += '\n'
-    print(h)
 
-    # print('Blah')
     def AddTabs(i):
         global o
         for j in range(i):
@@ -333,7 +349,7 @@ def MultipleComparisons():
 
 
 def sequential():
-    print(matrix)
+#    print(matrix)
     for i in range(nurls):
         for j in range(i + 1, nurls):
             one_pair(i, j)
@@ -359,9 +375,55 @@ def sequential():
         print('')
 
 
+def par_compare():
+#    read_words()
+    pairs = []
+    for i in range(nurls):
+        for j in range(i + 1, nurls):
+            k = str(i) + ',' + str(j)
+            pairs.append(k)
+#    print(len(pairs))
+#    print(pairs)
+#    num_workers = mp.cpu_count()
+    num_workers = 2
+#    print(num_workers)
+    chunk_size = len(pairs) // num_workers + 1
+    n_chunks = len(pairs) // chunk_size
+#    print("chunk_size,n_chunks", chunk_size, n_chunks)
+
+    workers = []
+    for w in range(n_chunks):
+        b = w * chunk_size
+        e = b + chunk_size
+        print(w, b, e)
+        workers.append(mp.Process(target=_par_worker, args=(b, e, pairs)))
+    try:
+        if e:
+            r = len(pairs) - e
+        if r > 0:
+            workers.append(mp.Process(target=_par_worker, args=(e, len(pairs), pairs)))
+    except:
+        pass
+#    print(workers)
+
+    for w in workers:
+#        print(w)
+        w.start()
+    for w in workers:
+#        print("ending:", w)
+        w.join()
+
+
+def _par_worker(i,j, pairs):
+#    print("396:", pairs)
+#    one_pair(i, j)
+    par_one_pair(i, j, pairs)
+
+
+#    pass
 # - Functions - End
 # Globals
-urls_0 = [
+urls = [
     "https://www.ands.org.au/working-with-data/metadata/geospatial-data-and-metadata",
     "https://www.ands.org.au/guides/geospatial",
     "https://www.safe.com/what-is/spatial-data/",
@@ -397,7 +459,7 @@ urls_0 = [
     "https://en.wikipedia.org/wiki/Titanic_(1997_film)",
     "https://en.wikipedia.org/wiki/Titanic_(1953_film)",
 ]
-urls = [
+urls_0 = [
     "https://www.ands.org.au/working-with-data/metadata/geospatial-data-and-metadata",
     "https://www.ands.org.au/guides/geospatial",
     "https://www.safe.com/what-is/spatial-data/",
@@ -406,13 +468,16 @@ urls = [
     "https://www.veris.com.au/our-services/geospatial-data-management/",
 ]
 nurls = len(urls)
-nurls = 2
+nurls = 10
 matrix = [[' '] * nurls for i in range(nurls)]
 # Globals - End
 #
 # -----------------------------------------------------------------------------------------------------------------
 # Call the functions
-read_words()
+#read_words()
 # OneComparison()
 # MultipleComparisons()
-sequential()
+#sequential()
+
+if __name__ == '__main__':
+    parallel_result = par_compare()  # "warm up"
