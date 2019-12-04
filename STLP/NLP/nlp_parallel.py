@@ -409,16 +409,17 @@ def par_compare():
     nn = nurls
     matrix = [[0] * nurls for i in range(nn)]
     for i in range(nn):
+        print("{},".format(i),end='')
         for j in range(i+1,nn):
             matrix[i][j] = C_1D[k]
             k += 1
-        print('')
-    print(matrix)
+    print('')
     for i in range(nn):
         print("{},".format(i),end='')
         for j in range(nn):
             print("{},".format(matrix[i][j]), end='')
         print('')
+    print(matrix)
 # - Functions - End -----------------------------------------------------------------
 # Globals - Begin
 urls = [
@@ -458,7 +459,7 @@ urls = [
     "https://en.wikipedia.org/wiki/Titanic_(1953_film)",
 ]
 nurls = len(urls)
-nurls = 6
+#nurls = 12
 # Globals - End
 #
 # -----------------------------------------------------------------------------------------------------------------
@@ -469,4 +470,7 @@ nurls = 6
 #sequential()
 
 if __name__ == '__main__':
+    st = time.perf_counter()
     par_compare()
+    end = time.perf_counter() - st
+    print("476:Total Time: {:0.2f} sec".format(end))
