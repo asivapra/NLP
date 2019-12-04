@@ -9,7 +9,7 @@ import time
 from nltk.corpus import stopwords
 import multiprocessing as mp
 import warnings
-warnings.filterwarnings('ignore')
+# warnings.filterwarnings('ignore')
 ct0 = time.perf_counter()
 print("14:Starting to read dictionary and stopwords")
 nlp = spacy.load("en_core_web_md")
@@ -80,22 +80,66 @@ def CountWords(t):
     counts = Counter(t)
 
 
+def get_and_write_urls(nurls):
+    # get all URLs and write to a local file. Once only
+    for i in range(nurls):
+        url = urls[i]
+        file = "Files/url" + str(i) + ".html"
+        print(file)
+        response = urllib.request.urlopen(url)
+        html = response.read()
+        with open(file, 'wb') as f:
+            f.write(html)
+
+
 def ReadUrls(i, j):
     url1 = urls[i]
     url2 = urls[j]
     global html1, html2, t1, t2, t1w, t2w, t1t, t2t, kw1, desc1, kw2, desc2, title1, title2
     t1 = []
     t2 = []
-    response = urllib.request.urlopen(url1)
-    html1 = response.read()
-    response = urllib.request.urlopen(url2)
-    html2 = response.read()
-    text1, title1, kw1, desc1 = text_from_html(html1)
-    t1 = Lemmatise(text1)
-    t1t = Lemmatise(str(title1))
-    text2, title2, kw2, desc2 = text_from_html(html2)
-    t2 = Lemmatise(text2)
-    t2t = Lemmatise(str(title2))
+    file1 = "Files/url" + str(i) + ".html"
+    file2 = "Files/url" + str(j) + ".html"
+    err = 0
+    try:
+        with open(file1, "rb") as f:
+            filecontent = bytes(f.read())
+            text1, title1, kw1, desc1 = text_from_html(filecontent)
+            t1 = Lemmatise(text1)
+            t1t = Lemmatise(str(title1))
+            # print('Reading from file 1:', title1)
+    except Exception as e:
+        print(e)
+        err = 1
+    if err:
+        # print('Reading from URL:')
+        response = urllib.request.urlopen(url1)
+        html1 = response.read()
+        # print(type(html1))
+        with open(file1, 'wb') as f:
+            f.write(html1)
+        text1, title1, kw1, desc1 = text_from_html(html1)
+        t1 = Lemmatise(text1)
+        t1t = Lemmatise(str(title1))
+    err = 0
+    try:
+        with open(file2, "rb") as f:
+            filecontent = bytes(f.read())
+            text2, title2, kw2, desc2 = text_from_html(filecontent)
+            t2 = Lemmatise(text2)
+            t2t = Lemmatise(str(title2))
+            # print('Reading from file 2:', title2)
+    except Exception as e:
+        print(e)
+        err = 1
+    if err:
+        response = urllib.request.urlopen(url2)
+        html2 = response.read()
+        with open(file2, 'wb') as f:
+             f.write(html2)
+        text2, title2, kw2, desc2 = text_from_html(html2)
+        t2 = Lemmatise(text2)
+        t2t = Lemmatise(str(title2))
 
     # Make a list of words and their counts. We will take the top 10 for further analysis
     CountWords(t1)
@@ -363,10 +407,10 @@ def par_ReadUrls(m,n,pairs,w,C_1D):
         i = int(i_j[0])
         j = int(i_j[1])
         ReadUrls(i, j)
-        st = SimilarityScore(str(title1), str(title2))
-        sk = SimilarityScore(kw1, kw2)
-        sd = SimilarityScore(desc1, desc2)
-        dv = Domain_match(urls[i], urls[j])
+#        st = SimilarityScore(str(title1), str(title2))
+#        sk = SimilarityScore(kw1, kw2)
+#         sd = SimilarityScore(desc1, desc2)
+#         dv = Domain_match(urls[i], urls[j])
         GetDocSegments()
         sc = CalculateSimilarity(i, j, nurls)
         s = round(sc, 2)
@@ -408,6 +452,7 @@ def par_compare():
 
     nn = nurls
     matrix = [[0] * nurls for i in range(nn)]
+    print("#,", end='')
     for i in range(nn):
         print("{},".format(i),end='')
         for j in range(i+1,nn):
@@ -419,7 +464,7 @@ def par_compare():
         for j in range(nn):
             print("{},".format(matrix[i][j]), end='')
         print('')
-    print(matrix)
+    # print(matrix)
 # - Functions - End -----------------------------------------------------------------
 # Globals - Begin
 urls = [
@@ -459,7 +504,7 @@ urls = [
     "https://en.wikipedia.org/wiki/Titanic_(1953_film)",
 ]
 nurls = len(urls)
-#nurls = 12
+#nurls = 6
 # Globals - End
 #
 # -----------------------------------------------------------------------------------------------------------------
@@ -468,9 +513,8 @@ nurls = len(urls)
 # OneComparison()
 # MultipleComparisons()
 #sequential()
-
+# get_and_write_urls(nurls)
 if __name__ == '__main__':
-    st = time.perf_counter()
     par_compare()
-    end = time.perf_counter() - st
-    print("476:Total Time: {:0.2f} sec".format(end))
+    etime = time.perf_counter() - ct0
+    print("476:Total Time: {:0.2f} sec".format(etime))
