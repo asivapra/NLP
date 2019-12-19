@@ -19,11 +19,15 @@ print("18:Finished reading: {:0.2f} sec".format(et))
 
 
 def read_words():
+    '''
+    This function is not used
+    :return:
+    '''
     global nlp, sr
     print("Reading in words and stopwords")
     # Load only once
     try:
-        if (nlp):
+        if nlp:
             pass
     except:
         nlp = spacy.load("en_core_web_md")
@@ -64,7 +68,7 @@ def Lemmatise(text):
     p = re.compile('[a-zA-Z]')
     lt = []
     lem = nlp(text)
-    # finding lemma for each wordx
+    # finding lemma for each word
     for word in lem:
         if (p.findall(str(word))):
             lemma = word.lemma_.lower()
@@ -93,35 +97,51 @@ def get_and_write_urls(nurls):
 
 
 def ReadUrls(i, j):
+    '''
+    This function reads two URLs and compare them.
+    :param i: URL 1
+    :param j: URL 2
+    :return: Nothing is returned
+    '''
     url1 = urls[i]
     url2 = urls[j]
     global html1, html2, t1, t2, t1w, t2w, t1t, t2t, kw1, desc1, kw2, desc2, title1, title2
     t1 = []
     t2 = []
+
+    # For speed, the contents fetched from the URLs are stored in files.
+    # Only if the files do not exist will the URLs be called again.
+    # TODO: The stored files must be purged at the end of the run to avoid mistakes.
     file1 = "Files/url" + str(i) + ".html"
     file2 = "Files/url" + str(j) + ".html"
     err = 0
+    # Read the first URL or its stored file content
     try:
         with open(file1, "rb") as f:
             filecontent = bytes(f.read())
             text1, title1, kw1, desc1 = text_from_html(filecontent)
+            # Take the lemmas of words within the text in pages. The 'text1' comes from the <body> and omits title
             t1 = Lemmatise(text1)
+
+            # Take the lemmas from the title of the page. This is NOT used at present.
             t1t = Lemmatise(str(title1))
-            # print('Reading from file 1:', title1)
     except Exception as e:
         print(e)
         err = 1
     if err:
+        # If stored file does not exist, then get the content from the URL and write it out in stored file.
+        # Since the same URL is used in many comparisons, faster to store it and read from it for subsequent calls.
         # print('Reading from URL:')
         response = urllib.request.urlopen(url1)
         html1 = response.read()
-        # print(type(html1))
         with open(file1, 'wb') as f:
             f.write(html1)
         text1, title1, kw1, desc1 = text_from_html(html1)
         t1 = Lemmatise(text1)
         t1t = Lemmatise(str(title1))
     err = 0
+
+    # Read the seconds URL or its stored file content
     try:
         with open(file2, "rb") as f:
             filecontent = bytes(f.read())
@@ -142,6 +162,7 @@ def ReadUrls(i, j):
         t2t = Lemmatise(str(title2))
 
     # Make a list of words and their counts. We will take the top 10 for further analysis
+    # The word counts are made from the lemmas of 'text1'. The most popular words are compared between the URLs
     CountWords(t1)
     t1w = []
     for key, val in counts.items():
@@ -272,6 +293,12 @@ def tag_visible(element):
 
 
 def text_from_html(body):
+    '''
+    The URL page content is processed to take the text from visible parts only.
+    BeautifulSoup parses the page content
+    :param body: The page content of the URL, including <head> and <body>
+    :return: returns the visible text, page title, keywords and description. Of these, only the 'text' is used.
+    '''
     soup = BeautifulSoup(body, 'html.parser')
     keywords = ''
     description = ''
@@ -289,6 +316,8 @@ def text_from_html(body):
             pass
 
     texts = soup.findAll(text=True)
+
+    # Omit the text from these HTML elements: ['a', 'link', 'style', 'script', 'head', 'title', 'meta', '[document]']
     visible_texts = filter(tag_visible, texts)
     return u" ".join(t.strip() for t in visible_texts), title, keywords, description
 
@@ -372,7 +401,10 @@ def MultipleComparisons():
 
 
 def sequential():
-#    print(matrix)
+    '''
+    This is to do the calculations sequentially. It is NOT being used anymore and its functionality may be broken.
+    :return:
+    '''
     for i in range(nurls):
         for j in range(i + 1, nurls):
             one_pair(i, j)
@@ -399,38 +431,69 @@ def sequential():
 
 
 def par_ReadUrls(m,n,pairs,w,C_1D):
+    '''
+    :param m: start of the range of pairs to be processed
+    :param n: end of the range
+    :param pairs: the list that holds the pairs of URLs to be compared.
+                e.g. ['0,1', '0,2', '0,3', '0,4', '1,2', '1,3', '1,4', '2,3', '2,4', '3,4']
+    :param w: the processor ID (0 to n)
+    :param C_1D: flat array to hold the values. It is accessible across the processes
+    :return: no value is returned
+    Method:
+        1. Each worker gets a range of pairs to process. These are done sequentially
+        2. Split the pairs[k] into two indices. e.g. '0,1' to 0 and 1. These are the two URLs to be compared
+        3. Send these to 'ReadUrls' to get the file contents
+        4. Call 'GetDocSegments' to split the content into smaller chunks
+        5. Call 'CalculateSimilarity' to calculate the cosine similarity
+        6. Record the value in C_1D array.
+    '''
+
     ct1 = time.perf_counter()
-    # print("360:Worker{} Starting to process the comparisons:{},{}".format(w,m,n))
     for k in range(m,n):
         pair = pairs[k]
         i_j = pair.split(',')
         i = int(i_j[0])
         j = int(i_j[1])
         ReadUrls(i, j)
-#        st = SimilarityScore(str(title1), str(title2))
-#        sk = SimilarityScore(kw1, kw2)
-#         sd = SimilarityScore(desc1, desc2)
-#         dv = Domain_match(urls[i], urls[j])
         GetDocSegments()
         sc = CalculateSimilarity(i, j, nurls)
         s = round(sc, 2)
         C_1D[k] = s
     et1 = time.perf_counter() - ct1 - ct0
-    print("379:Worker{} Finished comparisons: {:0.2f} sec".format(w,et1))
+    print("419:Worker{} Finished comparisons: {:0.2f} sec".format(w,et1))
 
 
 def par_compare():
+    '''
+    This function sets up multi-processing.
+    STEPS
+        1. Create an array of the pairs of comparisons. This is in the form of a list as below, where the numbers are the indices of the URLs...
+            ['0,1', '0,2', '0,3', '0,4', '1,2', '1,3', '1,4', '2,3', '2,4', '3,4']
+        2. Create a flat array that works across multiple processes.
+            It will hold the results from every sub-process and finally compiles them into one list
+        3. Find the number of CPUs on the system.
+            These many workers will be launched.
+        4. Determine the chunk_size based on the length of pairs and num_workers
+            Each worker will be given these many pairs to process. For example, if the number of pairs is 64 and there are 8 workers
+            then each worker will get 8 pairs to process.
+
+    '''
     pairs = []
     for i in range(nurls):
         for j in range(i + 1, nurls):
             k = str(i) + ',' + str(j)
             pairs.append(k)
+    print(len(pairs))
     C_1D = mp.RawArray('d', len(pairs))  # flat version of matrix C. 'd' = number
     num_workers = mp.cpu_count()
     chunk_size = len(pairs) // num_workers + 1
     n_chunks = len(pairs) // chunk_size
 
     workers = []
+    # Each worker gets a subset of the pairs.
+    # e.g. 8 workers and 64 pairs:
+    #   worker 1: From pairs[0] to pairs[7]. i.e. b = 0; e = 8
+    #   worker 2: from pairs[8] to pairs[15], b = 8; e = 16, and so on.
     for w in range(n_chunks):
         b = w * chunk_size
         e = b + chunk_size
@@ -444,17 +507,27 @@ def par_compare():
     except:
         pass
 
+    print("num_workers,workers:", num_workers, workers)
+    # As many processes are started as there are workers
+    # num_workers,workers: 8 [<Process(Process-1, initial)>, <Process(Process-2, initial)>,...]
     for w in workers:
         w.start()
+    # Wait for all processes to finish
     for w in workers:
         w.join()
     k = 0
 
     nn = nurls
+    # Initialise a list of nurls*nurls with 0s to hold the cosine similarity scores.
     matrix = [[0] * nurls for i in range(nn)]
+
+    # Print the top row values as we populate the matrix
     print("#,", end='')
     for i in range(nn):
         print("{},".format(i),end='')
+
+        # C_1D is a 1-dimensional array that holds the values. It gets the values from all workers together
+        # Split it into rows and columns in matrix
         for j in range(i+1,nn):
             matrix[i][j] = C_1D[k]
             k += 1
@@ -464,7 +537,26 @@ def par_compare():
         for j in range(nn):
             print("{},".format(matrix[i][j]), end='')
         print('')
-    # print(matrix)
+
+    # Write the results into a file. This will be used to compare against a reference matrix for expected matches
+    with open('Files/matrix.txt', 'w') as f:
+        for i in range(nurls):
+            for j in range(nurls):
+                f.write("{},".format(str(matrix[i][j])))
+            f.write("\n")
+
+    # Read in the ref_table for expected matches
+    ref_table = [[0] * 30 for i in range(30)]
+    j = 0
+    with open('ref_table.txt','r') as f:
+        lines = f.readlines()
+        for i in range(len(lines)):
+            lines[i].rstrip('\n\r')
+            la = lines[i].split('\t')
+            print(len(la))
+            ref_table[j] = la
+            j += 1
+    print(ref_table)
 # - Functions - End -----------------------------------------------------------------
 # Globals - Begin
 urls = [
@@ -504,7 +596,7 @@ urls = [
     "https://en.wikipedia.org/wiki/Titanic_(1953_film)",
 ]
 nurls = len(urls)
-#nurls = 6
+nurls = 3
 # Globals - End
 #
 # -----------------------------------------------------------------------------------------------------------------
@@ -515,6 +607,12 @@ nurls = len(urls)
 #sequential()
 # get_and_write_urls(nurls)
 if __name__ == '__main__':
+    '''
+    The function, 'par_compare()', does the following:
+    1. Create an array of 'pairs' of all required comparisons as e.g.
+        ['0,1', '0,2', '0,3', '0,4', '1,2', '1,3', '1,4', '2,3', '2,4', '3,4', ...]
+    2. Split the pairs array into chunks based on the number of CPUs used.
+    '''
     par_compare()
     etime = time.perf_counter() - ct0
-    print("476:Total Time: {:0.2f} sec".format(etime))
+    print("Line 574:Total Time: {:0.2f} sec".format(etime))
