@@ -10,6 +10,21 @@ from nltk.corpus import stopwords
 import multiprocessing as mp
 import warnings
 # warnings.filterwarnings('ignore')
+html1 = ''
+html2 = ''
+t1 = ''
+t2 = ''
+t1w = ''
+t2w = ''
+t1t = ''
+t2t = ''
+kw1 = ''
+desc1 = ''
+kw2 = ''
+desc2 = ''
+title1 = ''
+title2 = ''
+
 ct0 = time.perf_counter()
 print("14:Starting to read dictionary and stopwords")
 nlp = spacy.load("en_core_web_md")
@@ -19,10 +34,10 @@ print("18:Finished reading: {:0.2f} sec".format(et))
 
 
 def read_words():
-    '''
+    """
     This function is not used
     :return:
-    '''
+    """
     global nlp, sr
     print("Reading in words and stopwords")
     # Load only once
@@ -97,12 +112,12 @@ def get_and_write_urls(nurls):
 
 
 def ReadUrls(i, j):
-    '''
+    """
     This function reads two URLs and compare them.
     :param i: URL 1
     :param j: URL 2
     :return: Nothing is returned
-    '''
+    """
     url1 = urls[i]
     url2 = urls[j]
     global html1, html2, t1, t2, t1w, t2w, t1t, t2t, kw1, desc1, kw2, desc2, title1, title2
@@ -119,7 +134,8 @@ def ReadUrls(i, j):
     try:
         with open(file1, "rb") as f:
             filecontent = bytes(f.read())
-            text1, title1, kw1, desc1 = text_from_html(filecontent)
+            text1, title1, kw1, desc1 = text_from_html(filecontent,file1)
+            print(file1, text1)
             # Take the lemmas of words within the text in pages. The 'text1' comes from the <body> and omits title
             t1 = Lemmatise(text1)
 
@@ -136,7 +152,7 @@ def ReadUrls(i, j):
         html1 = response.read()
         with open(file1, 'wb') as f:
             f.write(html1)
-        text1, title1, kw1, desc1 = text_from_html(html1)
+        text1, title1, kw1, desc1 = text_from_html(html1,url1)
         t1 = Lemmatise(text1)
         t1t = Lemmatise(str(title1))
     err = 0
@@ -145,7 +161,8 @@ def ReadUrls(i, j):
     try:
         with open(file2, "rb") as f:
             filecontent = bytes(f.read())
-            text2, title2, kw2, desc2 = text_from_html(filecontent)
+            text2, title2, kw2, desc2 = text_from_html(filecontent,file2)
+            print(file2, text2)
             t2 = Lemmatise(text2)
             t2t = Lemmatise(str(title2))
             # print('Reading from file 2:', title2)
@@ -157,7 +174,7 @@ def ReadUrls(i, j):
         html2 = response.read()
         with open(file2, 'wb') as f:
              f.write(html2)
-        text2, title2, kw2, desc2 = text_from_html(html2)
+        text2, title2, kw2, desc2 = text_from_html(html2,url2)
         t2 = Lemmatise(text2)
         t2t = Lemmatise(str(title2))
 
@@ -292,13 +309,15 @@ def tag_visible(element):
     return True
 
 
-def text_from_html(body):
-    '''
+def text_from_html(body,src):
+    """
     The URL page content is processed to take the text from visible parts only.
     BeautifulSoup parses the page content
     :param body: The page content of the URL, including <head> and <body>
     :return: returns the visible text, page title, keywords and description. Of these, only the 'text' is used.
-    '''
+    """
+    # Beautiful Soup is a Python library for pulling data out of HTML and XML files.
+    # Here it parses the <body></body> content into a 'soup' data structure.
     soup = BeautifulSoup(body, 'html.parser')
     keywords = ''
     description = ''
@@ -316,7 +335,6 @@ def text_from_html(body):
             pass
 
     texts = soup.findAll(text=True)
-
     # Omit the text from these HTML elements: ['a', 'link', 'style', 'script', 'head', 'title', 'meta', '[document]']
     visible_texts = filter(tag_visible, texts)
     return u" ".join(t.strip() for t in visible_texts), title, keywords, description
@@ -401,10 +419,10 @@ def MultipleComparisons():
 
 
 def sequential():
-    '''
+    """
     This is to do the calculations sequentially. It is NOT being used anymore and its functionality may be broken.
     :return:
-    '''
+    """
     for i in range(nurls):
         for j in range(i + 1, nurls):
             one_pair(i, j)
@@ -431,7 +449,7 @@ def sequential():
 
 
 def par_ReadUrls(m,n,pairs,w,C_1D):
-    '''
+    """
     :param m: start of the range of pairs to be processed
     :param n: end of the range
     :param pairs: the list that holds the pairs of URLs to be compared.
@@ -446,7 +464,7 @@ def par_ReadUrls(m,n,pairs,w,C_1D):
         4. Call 'GetDocSegments' to split the content into smaller chunks
         5. Call 'CalculateSimilarity' to calculate the cosine similarity
         6. Record the value in C_1D array.
-    '''
+    """
 
     ct1 = time.perf_counter()
     for k in range(m,n):
@@ -464,7 +482,7 @@ def par_ReadUrls(m,n,pairs,w,C_1D):
 
 
 def par_compare():
-    '''
+    """
     This function sets up multi-processing.
     STEPS
         1. Create an array of the pairs of comparisons. This is in the form of a list as below, where the numbers are the indices of the URLs...
@@ -477,7 +495,7 @@ def par_compare():
             Each worker will be given these many pairs to process. For example, if the number of pairs is 64 and there are 8 workers
             then each worker will get 8 pairs to process.
 
-    '''
+    """
     pairs = []
     for i in range(nurls):
         for j in range(i + 1, nurls):
@@ -607,12 +625,12 @@ nurls = 3
 #sequential()
 # get_and_write_urls(nurls)
 if __name__ == '__main__':
-    '''
+    """
     The function, 'par_compare()', does the following:
     1. Create an array of 'pairs' of all required comparisons as e.g.
         ['0,1', '0,2', '0,3', '0,4', '1,2', '1,3', '1,4', '2,3', '2,4', '3,4', ...]
     2. Split the pairs array into chunks based on the number of CPUs used.
-    '''
+    """
     par_compare()
     etime = time.perf_counter() - ct0
     print("Line 574:Total Time: {:0.2f} sec".format(etime))
