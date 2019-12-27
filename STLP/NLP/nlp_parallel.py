@@ -10,6 +10,9 @@ from nltk.corpus import stopwords
 import multiprocessing as mp
 # import warnings
 # warnings.filterwarnings('ignore')
+import csv
+from collections import OrderedDict
+
 html1 = ''
 html2 = ''
 t1 = ''
@@ -28,18 +31,27 @@ doc1_segments = []
 doc2_segments = []
 n_doc1_segments = 0
 n_doc2_segments = 0
+ct0 = 0
+doc_segments = OrderedDict()
 
-ct0 = time.perf_counter()
-print("Starting to read dictionary and stopwords")
-nlp = spacy.load("en_core_web_md")
-sr = stopwords.words('english')
-et = time.perf_counter() - ct0
-print("Finished reading: {:0.2f} sec".format(et))
+
+def read_dictionary():
+    """
+    Read the dictionary and stop words
+    :return: None
+    """
+    global ct0, nlp, sr
+    ct0 = time.perf_counter()
+    print("Starting to read dictionary and stopwords")
+    nlp = spacy.load("en_core_web_md")
+    sr = stopwords.words('english')
+    et = time.perf_counter() - ct0
+    print("Finished reading: {:0.2f} sec".format(et))
 
 
 # ------Functions
 def Lemmatise(text):
-    global nlp,sr
+    global nlp, sr
     # Implementing lemmatization
     p = re.compile('[a-zA-Z]')
     lt = []
@@ -49,7 +61,7 @@ def Lemmatise(text):
         if p.findall(str(word)):
             lemma = word.lemma_.lower()
             if len(lemma) > 3:
-                if str(lemma) not in (sr):
+                if str(lemma) not in sr:
                     lt.append(lemma)
     return lt
 
@@ -176,6 +188,7 @@ def CalculateSimilarity():
     Must try to recollect the logic. DO NOT CHANGE IT NOW.
     :return: avg
     """
+    global nlp, sr
     sims = []
     k = n_urls
     if n_doc1_segments < k:
@@ -255,9 +268,9 @@ def par_ReadUrls(m, n, pairs, w, C_1D):
         5. Call 'CalculateSimilarity' to calculate the cosine similarity
         6. Record the value in C_1D array.
     """
-
+    read_dictionary()
     ct1 = time.perf_counter()
-    for k in range(m,n):
+    for k in range(m, n):
         pair = pairs[k]
         i_j = pair.split(',')
         i = int(i_j[0])
@@ -367,6 +380,153 @@ def par_compare():
     # print(ref_table)
 
 
+def par_CS(m, n, pairs, w, C_1D, keys_list):
+    print(w, len(keys_list))
+    for k in range(m, n):
+        pair = pairs[k]
+        i_j = pair.split(',')
+        i = int(i_j[0])
+        j = int(i_j[1])
+        print(i_j, keys_list[i], "|", keys_list[j])
+        # print(j, keys_list[j])
+
+
+def par_compare_GM_data(keys_list):
+    """
+    Function to compare Gavin Mackay's data in the CSV files
+    This function sets up multi-processing.
+    STEPS
+        1. Create an array of the pairs of comparisons. This is in the form of a list as below, where the numbers are the indices of the URLs...
+            ['0,1', '0,2', '0,3', '0,4', '1,2', '1,3', '1,4', '2,3', '2,4', '3,4']
+        2. Create a flat array that works across multiple processes.
+            It will hold the results from every sub-process and finally compiles them into one list
+        3. Find the number of CPUs on the system.
+            These many workers will be launched.
+        4. Determine the chunk_size based on the length of pairs and num_workers
+            Each worker will be given these many pairs to process. For example, if the number of pairs is 64 and
+            there are 8 workers then each worker will get 8 pairs to process.
+    :return:
+    """
+    n_keys = 12
+    print(n_keys)
+    pairs = []
+    # The number of pairs = (n_keys * (n_keys+1) / 2 ) - n_keys
+    for i in range(n_keys):
+        # print(i)
+        for j in range(i + 1, n_keys):
+            k = str(i) + ',' + str(j)
+            pairs.append(k)
+    # print(len(pairs))
+    C_1D = mp.RawArray('d', len(pairs))  # flat version of matrix C. 'd' = number
+    num_workers = mp.cpu_count()
+    chunk_size = len(pairs) // num_workers + 1
+    n_chunks = len(pairs) // chunk_size
+
+    workers = []
+    # Each worker gets a subset of the pairs.
+    # e.g. 8 workers and 64 pairs:
+    #   worker 1: From pairs[0] to pairs[7]. i.e. b = 0; e = 8
+    #   worker 2: from pairs[8] to pairs[15], b = 8; e = 16, and so on.
+    for w in range(n_chunks):
+        b = w * chunk_size
+        e = b + chunk_size
+        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, C_1D, keys_list)))
+    try:
+        if e:
+            r = len(pairs) - e
+        if r > 0:
+            w += 1
+            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, C_1D, keys_list)))
+    except:
+        pass
+
+    print("num_workers,workers:", num_workers, workers)
+    for w in workers:
+        w.start()
+    # Wait for all processes to finish
+    for w in workers:
+        w.join()
+
+
+def read_csv():
+    global doc_segments
+    csv_filename = "Files/stlprecordassociationkeyphrases.typed.csv"
+    with open(csv_filename, encoding="utf8") as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        line_count = 0
+        for row in csv_reader:
+            if line_count == 0:
+                # print(f'Column names are {", ".join(row)}')
+                line_count += 1
+            else:
+                line_count += 1
+                try:
+                    # This will give an error if the key is not yet defined.
+                    # Subsequent values are appended
+                    doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3]
+                except Exception as e:
+                    # print(e)
+                    # The first value is assigned to the key
+                    doc_segments[row[4]] = row[3]
+
+
+def read_csv_2():
+    global doc_segments
+    csv_filename = "Files/stlprecordassociationkeyphrases.typed.csv"
+    with open(csv_filename, encoding="utf8") as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        for row in csv_reader:
+            try:
+                # This will give an error if the key is not yet defined.
+                # Subsequent values are appended
+                doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3]
+            except Exception as e:
+                # print(e)
+                # The first value is assigned to the key
+                doc_segments[row[4]] = row[3]
+
+        # print(f'Processed {line_count} lines.')
+        # print(doc_segments['11599293_Meeting Report - RTI Training 200109.DOC'])
+
+
+def read_csv_1():
+    global doc_segments
+    csv_filename = "Files/stlprecordassociationkeyphrases.typed.csv"
+    with open(csv_filename, encoding="utf8") as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        line_count = 0
+        # print(type(doc_segments))
+        for row in csv_reader:
+            if line_count == 0:
+                # print(f'Column names are {", ".join(row)}')
+                line_count += 1
+            else:
+                line_count += 1
+                try:
+                    # Subsequent values are appended
+                    doc_segments[row[4]] = doc_segments[key] + ' ' + row[3]
+                except:
+                    # The first value
+                    doc_segments[row[4]] = row[3]
+
+        print(f'Processed {line_count} lines.')
+        # print(doc_segments['11599293_Meeting Report - RTI Training 200109.DOC'])
+
+
+def read_csv_0():
+    csv_filename = "Files/stlprecordassociationkeyphrases.typed.csv"
+    with open(csv_filename, encoding="utf8") as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        line_count = 0
+        for row in csv_reader:
+            if line_count == 0:
+                print(f'Column names are {", ".join(row)}')
+                line_count += 1
+            else:
+                line_count += 1
+        print(f'Processed {line_count} lines.')
+
+
 # - Functions - End -----------------------------------------------------------------
 # Globals - Begin
 
@@ -420,6 +580,19 @@ if __name__ == '__main__':
         ['0,1', '0,2', '0,3', '0,4', '1,2', '1,3', '1,4', '2,3', '2,4', '3,4', ...]
     2. Split the pairs array into chunks based on the number of CPUs used.
     """
-    par_compare()
+    # Read the CSV files and create a dict of doc_segments, where the keys are the filenames
+    # and the values are the key phrases concatenated together.
+    read_csv()
+
+    # Take the keys into an array
+    keys_list = list(doc_segments.keys())
+    # print(len(keys_list))
+    # n_keys = 0
+    # for key in doc_segments.keys():
+    #     n_keys += 1
+    #     # print(key)
+    # print("Total Files:", n_keys)
+    par_compare_GM_data(keys_list)
+    # par_compare()
     et1 = time.perf_counter() - ct0
     print("Total Time: {:0.2f} sec".format(et1))
