@@ -32,6 +32,7 @@ doc2_segments = []
 n_doc1_segments = 0
 n_doc2_segments = 0
 ct0 = 0
+pt = time.perf_counter()
 doc_segments = OrderedDict()
 
 
@@ -45,8 +46,8 @@ def read_dictionary():
     print("Starting to read dictionary and stopwords")
     nlp = spacy.load("en_core_web_md")
     sr = stopwords.words('english')
-    et = time.perf_counter() - ct0
-    print("Finished reading: {:0.2f} sec".format(et))
+    # et = time.perf_counter() - ct0
+    # print("Finished reading: {:0.2f} sec".format(et))
 
 
 # ------Functions
@@ -380,15 +381,110 @@ def par_compare():
     # print(ref_table)
 
 
-def par_CS(m, n, pairs, w, C_1D, keys_list):
-    print(w, len(keys_list))
+def GetDoc1and2(i, j, keys_list):
+    global doc_segments
+    doc1 = doc_segments[keys_list[i]]
+    doc2 = doc_segments[keys_list[j]]
+    print(doc1, " | vs. | ", doc2)
+
+
+def get_jaccard_sim(str1, str2):
+    a = set(str1.split())
+    b = set(str2.split())
+    c = a.intersection(b)
+    return float(len(c)) / (len(a) + len(b) - len(c)), len(a), len(b), len(c)
+
+
+def testCS():
+    global nlp, sr
+    s1 = ['activity', 'appropriate', 'capacity', 'building', 'strategy', 'assessment', 'framework', 'assessment',
+     'framework', 'implementation', 'baseline', 'datum', 'capability', 'maturity', 'level', 'change', 'management',
+     'objective', 'compliance', 'performance', 'model', 'compliance', 'performance', 'monitoring', 'consultation',
+     'brief', 'diverse', 'recordkeeping', 'function', 'document', 'control', 'sheet', 'information', 'management',
+     'policy', 'information', 'recordkeepe', 'training', 'project', 'training', 'parameter', 'mccauley', 'level',
+     'risk', 'assessment', 'framework', 'mccauley', 'phone', 'national', 'information', 'management', 'skill', 'summit',
+     'outcome', 'delivery', 'delay', 'policy', 'officer', 'potential', 'user', 'group', 'principal', 'policy',
+     'officer', 'project', 'plan', 'project', 'sponsor', 'public', 'sector', 'queensland', 'public', 'queensland',
+     'public', 'authority', 'queensland', 'state', 'archives', 'queensland', 'state', 'archives&|39', 'recordkeepe',
+     'assessment', 'framework', 'recordkeeping', 'assessment', 'framework', 'development', 'recordkeeping',
+     'assessment', 'framework', 'implementation', 'recordkeepe', 'assessment', 'framework', 'implementation', 'plan',
+     'recordkeeping', 'assessment', 'framework', 'outcome', 'recordkeeping', 'assessment', 'framework', 'reference',
+     'group', 'recordkeepe', 'awareness', 'program', 'recordkeepe', 'compliance', 'performance', 'model', 'recordkeepe',
+     'training', 'research', 'unit', 'version', 'history']
+    s2 = ['activity', 'appropriate', 'capacity', 'building', 'strategy', 'assessment', 'activity', 'assessment', 'framework',
+     'assessment', 'framework', 'implementation', 'assessment', 'framework', 'sustainability', 'baseline', 'datum',
+     'briefing', 'note', 'prepare', 'capability', 'maturity', 'level', 'change', 'management', 'objective',
+     'compliance', 'performance', 'model', 'compliance', 'performance', 'monitoring', 'consultation', 'brief', 'deputy',
+     'director', 'diverse', 'recordkeeping', 'function', 'document', 'control', 'sheet', 'financial', 'implication',
+     'implement', 'compliance', 'performance', 'monitor', 'information', 'management', 'policy', 'information',
+     'recordkeepe', 'training', 'project', 'focus', 'area', 'training', 'parameter', 'mccauley', 'level', 'risk',
+     'assessment', 'framework', 'mccauley', 'phone', 'national', 'information', 'management', 'skill', 'summit',
+     'ongoing', 'administrative', 'outcome', 'delivery', 'delay', 'performance', 'model', 'peer', 'policy', 'officer',
+     'principal', 'policy', 'officer', 'project', 'manager', 'project', 'plan', 'project', 'sponsor', 'queensland',
+     'public', 'queensland', 'public', 'authorities&|39', 'queensland', 'public', 'authority', 'queensland', 'state',
+     'archives', 'queensland', 'state', 'archives&|39', 'recordkeepe', 'assessment', 'framework', 'recordkeeping',
+     'assessment', 'framework', 'development', 'recordkeeping', 'assessment', 'framework', 'implementation',
+     'recordkeepe', 'assessment', 'framework', 'implementation', 'plan', 'recordkeeping', 'assessment', 'framework',
+     'outcome', 'recordkeeping', 'assessment', 'framework', 'reference', 'group', 'recordkeepe', 'awareness', 'program',
+     'recordkeepe', 'compliance', 'performance', 'model', 'research', 'unit', 'state', 'archivist', 'assessment',
+     'blah1', 'blah2', 'blah3', 'blah4', 'blah5', 'blah6', 'blah7', 'blah8', 'blah9', 'blah10']
+    doc1str = " ".join(s1)
+    doc2str = " ".join(s2)
+    doc1nlp = nlp(doc1str)
+    doc2nlp = nlp(doc2str)
+    sim = doc1nlp.similarity(doc2nlp)
+    s = round(sim, 2)
+    print(s)
+
+
+def par_CS(m, n, pairs, w, C_1D, kl, doc_segments):
+    global nlp, sr
+    read_dictionary()
+    # testCS()
+    # global doc_segments
+    # print(w, len(keys_list))
     for k in range(m, n):
         pair = pairs[k]
         i_j = pair.split(',')
         i = int(i_j[0])
         j = int(i_j[1])
-        print(i_j, keys_list[i], "|", keys_list[j])
+        # print(i_j, keys_list[i], "|", keys_list[j])
+        doc1 = Lemmatise(doc_segments[kl[i]])
+        # doc1s = list(set(doc1))
+        doc1sstr = " ".join(doc1)
+        doc1str = " ".join(doc1)
+        # print(doc1str)
+        doc2 = Lemmatise(doc_segments[kl[j]])
+        # doc2s = list(set(doc2))
+        doc2sstr = " ".join(doc2)
+        doc2str = " ".join(doc2)
+        doc1nlp = nlp(doc1str)
+        doc2nlp = nlp(doc2str)
+        sim = doc1nlp.similarity(doc2nlp)
+        s = round(sim, 2)
+        jsim, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
+        js = round(jsim, 2)
+        print(i, j, s, js)
+        # if s > 0.93:
+        #     jsim, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
+        #     js = round(jsim, 2)
+        #     print(i_j, s, "****", js, a, b, c)
+        #     print(doc1)
+        #     print(doc2)
+        # else:
+        #     jsim, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
+        #     js = round(jsim, 2)
+        #     print(i_j, s, "----", js, a, b, c)
+        # GetDoc1and2(i, j, keys_list)
         # print(j, keys_list[j])
+
+
+def elapsedTime(n):
+    global pt
+    ct = time.perf_counter()
+    et = ct - pt
+    print("Elapsed:", n, ":", et, " sec.")
+    pt = ct
 
 
 def par_compare_GM_data(keys_list):
@@ -407,15 +503,18 @@ def par_compare_GM_data(keys_list):
             there are 8 workers then each worker will get 8 pairs to process.
     :return:
     """
-    n_keys = 12
+    n_keys = len(keys_list)
+    n_keys = 100
     print(n_keys)
     pairs = []
-    # The number of pairs = (n_keys * (n_keys+1) / 2 ) - n_keys
+    n_pairs = (n_keys * (n_keys+1) / 2) - n_keys
+    print("Making the pairs:", n_pairs)
     for i in range(n_keys):
         # print(i)
         for j in range(i + 1, n_keys):
             k = str(i) + ',' + str(j)
             pairs.append(k)
+    elapsedTime(452)
     # print(len(pairs))
     C_1D = mp.RawArray('d', len(pairs))  # flat version of matrix C. 'd' = number
     num_workers = mp.cpu_count()
@@ -430,17 +529,17 @@ def par_compare_GM_data(keys_list):
     for w in range(n_chunks):
         b = w * chunk_size
         e = b + chunk_size
-        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, C_1D, keys_list)))
+        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, C_1D, keys_list, doc_segments)))
     try:
         if e:
             r = len(pairs) - e
         if r > 0:
             w += 1
-            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, C_1D, keys_list)))
+            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, C_1D, keys_list, doc_segments)))
     except:
         pass
 
-    print("num_workers,workers:", num_workers, workers)
+    # print("num_workers,workers:", num_workers, workers)
     for w in workers:
         w.start()
     # Wait for all processes to finish
