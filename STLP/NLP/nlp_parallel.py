@@ -487,7 +487,7 @@ def elapsedTime(n):
     pt = ct
 
 
-def par_compare_GM_data(keys_list):
+def par_compare_GM_data(kl):
     """
     Function to compare Gavin Mackay's data in the CSV files
     This function sets up multi-processing.
@@ -503,7 +503,7 @@ def par_compare_GM_data(keys_list):
             there are 8 workers then each worker will get 8 pairs to process.
     :return:
     """
-    n_keys = len(keys_list)
+    n_keys = len(kl)
     n_keys = 100
     print(n_keys)
     pairs = []
@@ -529,13 +529,13 @@ def par_compare_GM_data(keys_list):
     for w in range(n_chunks):
         b = w * chunk_size
         e = b + chunk_size
-        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, C_1D, keys_list, doc_segments)))
+        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, C_1D, kl, doc_segments)))
     try:
         if e:
             r = len(pairs) - e
         if r > 0:
             w += 1
-            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, C_1D, keys_list, doc_segments)))
+            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, C_1D, kl, doc_segments)))
     except:
         pass
 
@@ -548,6 +548,21 @@ def par_compare_GM_data(keys_list):
 
 
 def read_csv():
+    """
+    The CSV file has source filenames (column 4) and keyword phrases (column 3)
+    e.g.
+    KeyPhraseLocation	KeyPhraseLocation@type	PartitionKey	RowKey	SourceFileName
+    body | Edm.String | https:||qsaqutpoc...200109.doc| training program initiative | 11599293_Meeting Report - RTI Training 200109.DOC
+
+    Several rows of keyphrases for the same source file. These are appended, with spaces, into a long text string
+    and added to a global OrderedDict, 'doc_segments', using the source file name as the key. OrderedDict is used
+    instead of normal dict so that the order of filenames in the CSV is maintained in the data structure. It helps
+    to manually check the results.
+
+    The Cosine Similarity will be calculated on these key phrases between pairs of source files.
+
+    :return:
+    """
     global doc_segments
     csv_filename = "Files/stlprecordassociationkeyphrases.typed.csv"
     with open(csv_filename, encoding="utf8") as csv_file:
@@ -567,63 +582,6 @@ def read_csv():
                     # print(e)
                     # The first value is assigned to the key
                     doc_segments[row[4]] = row[3]
-
-
-def read_csv_2():
-    global doc_segments
-    csv_filename = "Files/stlprecordassociationkeyphrases.typed.csv"
-    with open(csv_filename, encoding="utf8") as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        for row in csv_reader:
-            try:
-                # This will give an error if the key is not yet defined.
-                # Subsequent values are appended
-                doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3]
-            except Exception as e:
-                # print(e)
-                # The first value is assigned to the key
-                doc_segments[row[4]] = row[3]
-
-        # print(f'Processed {line_count} lines.')
-        # print(doc_segments['11599293_Meeting Report - RTI Training 200109.DOC'])
-
-
-def read_csv_1():
-    global doc_segments
-    csv_filename = "Files/stlprecordassociationkeyphrases.typed.csv"
-    with open(csv_filename, encoding="utf8") as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        line_count = 0
-        # print(type(doc_segments))
-        for row in csv_reader:
-            if line_count == 0:
-                # print(f'Column names are {", ".join(row)}')
-                line_count += 1
-            else:
-                line_count += 1
-                try:
-                    # Subsequent values are appended
-                    doc_segments[row[4]] = doc_segments[key] + ' ' + row[3]
-                except:
-                    # The first value
-                    doc_segments[row[4]] = row[3]
-
-        print(f'Processed {line_count} lines.')
-        # print(doc_segments['11599293_Meeting Report - RTI Training 200109.DOC'])
-
-
-def read_csv_0():
-    csv_filename = "Files/stlprecordassociationkeyphrases.typed.csv"
-    with open(csv_filename, encoding="utf8") as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        line_count = 0
-        for row in csv_reader:
-            if line_count == 0:
-                print(f'Column names are {", ".join(row)}')
-                line_count += 1
-            else:
-                line_count += 1
-        print(f'Processed {line_count} lines.')
 
 
 # - Functions - End -----------------------------------------------------------------
@@ -682,16 +640,8 @@ if __name__ == '__main__':
     # Read the CSV files and create a dict of doc_segments, where the keys are the filenames
     # and the values are the key phrases concatenated together.
     read_csv()
-
     # Take the keys into an array
     keys_list = list(doc_segments.keys())
-    # print(len(keys_list))
-    # n_keys = 0
-    # for key in doc_segments.keys():
-    #     n_keys += 1
-    #     # print(key)
-    # print("Total Files:", n_keys)
     par_compare_GM_data(keys_list)
-    # par_compare()
     et1 = time.perf_counter() - ct0
     print("Total Time: {:0.2f} sec".format(et1))
