@@ -81,55 +81,37 @@ def get_jaccard_sim(str1, str2):
     c = a.intersection(b)
     js = float(len(c) / (len(a)+len(b)-len(c)))
     return js, len(a), len(b), len(c)
-    # return float(len(c)) / (len(a) + len(b) - len(c)), len(a), len(b), len(c)
 
 
-def par_CS(m, n, pairs, w, C_1D, kl, doc_segments, lock):
+def par_CS(m, n, pairs, w, kl, segs, lock):
     global nlp, sr
     read_dictionary()
-    # testCS()
-    # global doc_segments
-    # print(w, len(keys_list))
-    for k in range(m, n):
-        pair = pairs[k]
-        i_j = pair.split(',')
-        i = int(i_j[0])
-        j = int(i_j[1])
-        # print(i_j, keys_list[i], "|", keys_list[j])
-        doc1 = Lemmatise(doc_segments[kl[i]])
-        # doc1s = list(set(doc1))
-        doc1sstr = " ".join(doc1)
-        doc1str = " ".join(doc1)
-        # print(doc1str)
-        doc2 = Lemmatise(doc_segments[kl[j]])
-        # doc2s = list(set(doc2))
-        doc2sstr = " ".join(doc2)
-        doc2str = " ".join(doc2)
-        doc1nlp = nlp(doc1str)
-        doc2nlp = nlp(doc2str)
-        sim = doc1nlp.similarity(doc2nlp)
-        s = round(sim, 2)
-        js, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
-        js = round(js, 2)
-        lock.acquire()
-        if s > 0.93:
-            print("{}_{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(i, j, s, a, b, c, js, kl[i], kl[j], doc1sstr, doc2sstr))
-        else:
-            # print("{}_{}\t{}\t{}\t{}\t{}\t{}".format(i, j, s, a, b, c, js))
-            print("{}_{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(i, j, s, a, b, c, js, kl[i], kl[j], doc1sstr, doc2sstr))
-        lock.release()
-        # if s > 0.93:
-        #     jsim, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
-        #     js = round(jsim, 2)
-        #     print(i_j, s, "****", js, a, b, c)
-        #     print(doc1)
-        #     print(doc2)
-        # else:
-        #     jsim, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
-        #     js = round(jsim, 2)
-        #     print(i_j, s, "----", js, a, b, c)
-        # GetDoc1and2(i, j, keys_list)
-        # print(j, keys_list[j])
+    with open("Files/nlp_parallel_csv_results.txt", "a") as f:
+        for k in range(m, n):
+            pair = pairs[k]
+            i_j = pair.split(',')
+            i = int(i_j[0])
+            j = int(i_j[1])
+            doc1 = Lemmatise(segs[kl[i]])
+            doc1sstr = " ".join(doc1)
+            doc1str = " ".join(doc1)
+            doc2 = Lemmatise(segs[kl[j]])
+            doc2sstr = " ".join(doc2)
+            doc2str = " ".join(doc2)
+            doc1nlp = nlp(doc1str)
+            doc2nlp = nlp(doc2str)
+            sim = doc1nlp.similarity(doc2nlp)
+            s = round(sim, 2)
+            js, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
+            js = round(js, 2)
+            lock.acquire()
+            if s > 0.93:
+                print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, s, a, b, c, js))
+                f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\n".format(w, i, j, s, a, b, c, js, kl[i], kl[j], doc1sstr, doc2sstr))
+            else:
+                print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, s, a, b, c, js))
+                f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\n".format(w, i, j, s, a, b, c, js, kl[i], kl[j], doc1sstr, doc2sstr))
+            lock.release()
 
 
 def elapsedTime():
@@ -168,8 +150,7 @@ def par_compare(kl):
             k = str(i) + ',' + str(j)
             pairs.append(k)
     elapsedTime()
-    # print(len(pairs))
-    C_1D = mp.RawArray('d', len(pairs))  # flat version of matrix C. 'd' = number
+    # C_1D = mp.RawArray('d', len(pairs))  # flat version of matrix C. 'd' = number
     num_workers = mp.cpu_count()
     chunk_size = len(pairs) // num_workers + 1
     n_chunks = len(pairs) // chunk_size
@@ -179,16 +160,18 @@ def par_compare(kl):
     # e.g. 8 workers and 64 pairs:
     #   worker 1: From pairs[0] to pairs[7]. i.e. b = 0; e = 8
     #   worker 2: from pairs[8] to pairs[15], b = 8; e = 16, and so on.
+    with open("Files/nlp_parallel_csv_results.txt", "w") as f:
+        f.write("CPU\ti_j\tCS\twords_i\twords_j\tintersect\tJS\tReal\tFile1\tFile2\tDoc1\tDoc2\n")
     for w in range(n_chunks):
         b = w * chunk_size
         e = b + chunk_size
-        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, C_1D, kl, doc_segments, lock)))
+        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, kl, doc_segments, lock)))
     try:
         if e:
             r = len(pairs) - e
         if r > 0:
             w += 1
-            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, C_1D, kl, doc_segments, lock)))
+            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, kl, doc_segments, lock)))
     except:
         pass
 
