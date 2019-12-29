@@ -12,6 +12,7 @@ import multiprocessing as mp
 # warnings.filterwarnings('ignore')
 import csv
 from collections import OrderedDict
+from inspect import getframeinfo, stack
 
 html1 = ''
 html2 = ''
@@ -78,10 +79,12 @@ def get_jaccard_sim(str1, str2):
     a = set(str1.split())
     b = set(str2.split())
     c = a.intersection(b)
-    return float(len(c)) / (len(a) + len(b) - len(c)), len(a), len(b), len(c)
+    js = float(len(c) / (len(a)+len(b)-len(c)))
+    return js, len(a), len(b), len(c)
+    # return float(len(c)) / (len(a) + len(b) - len(c)), len(a), len(b), len(c)
 
 
-def par_CS(m, n, pairs, w, C_1D, kl, doc_segments):
+def par_CS(m, n, pairs, w, C_1D, kl, doc_segments, lock):
     global nlp, sr
     read_dictionary()
     # testCS()
@@ -106,9 +109,15 @@ def par_CS(m, n, pairs, w, C_1D, kl, doc_segments):
         doc2nlp = nlp(doc2str)
         sim = doc1nlp.similarity(doc2nlp)
         s = round(sim, 2)
-        jsim, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
-        js = round(jsim, 2)
-        print(i, j, s, js)
+        js, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
+        js = round(js, 2)
+        lock.acquire()
+        if s > 0.93:
+            print("{}_{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(i, j, s, a, b, c, js, kl[i], kl[j], doc1sstr, doc2sstr))
+        else:
+            # print("{}_{}\t{}\t{}\t{}\t{}\t{}".format(i, j, s, a, b, c, js))
+            print("{}_{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}".format(i, j, s, a, b, c, js, kl[i], kl[j], doc1sstr, doc2sstr))
+        lock.release()
         # if s > 0.93:
         #     jsim, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
         #     js = round(jsim, 2)
@@ -123,11 +132,12 @@ def par_CS(m, n, pairs, w, C_1D, kl, doc_segments):
         # print(j, keys_list[j])
 
 
-def elapsedTime(n):
+def elapsedTime():
+    caller = getframeinfo(stack()[1][0])
     global pt
     ct = time.perf_counter()
-    et = ct - pt
-    print("Elapsed:", n, ":", et, " sec.")
+    et = round((ct - pt), 2)
+    print("Line {}: Elapsed Time: {} sec.".format(caller.lineno, et))
     pt = ct
 
 
@@ -147,24 +157,23 @@ def par_compare(kl):
             there are 8 workers then each worker will get 8 pairs to process.
     :return:
     """
-    n_keys = len(kl)
-    n_keys = 100
-    print(n_keys)
+    # n_keys = len(kl)
+    n_keys = 10
     pairs = []
     n_pairs = (n_keys * (n_keys+1) / 2) - n_keys
-    print("Making the pairs:", n_pairs)
+    print("No. of files: {}. Total pairs: {}".format(n_keys, n_pairs))
     for i in range(n_keys):
         # print(i)
         for j in range(i + 1, n_keys):
             k = str(i) + ',' + str(j)
             pairs.append(k)
-    elapsedTime(161)
+    elapsedTime()
     # print(len(pairs))
     C_1D = mp.RawArray('d', len(pairs))  # flat version of matrix C. 'd' = number
     num_workers = mp.cpu_count()
     chunk_size = len(pairs) // num_workers + 1
     n_chunks = len(pairs) // chunk_size
-
+    lock = mp.Lock()
     workers = []
     # Each worker gets a subset of the pairs.
     # e.g. 8 workers and 64 pairs:
@@ -173,22 +182,26 @@ def par_compare(kl):
     for w in range(n_chunks):
         b = w * chunk_size
         e = b + chunk_size
-        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, C_1D, kl, doc_segments)))
+        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, C_1D, kl, doc_segments, lock)))
     try:
         if e:
             r = len(pairs) - e
         if r > 0:
             w += 1
-            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, C_1D, kl, doc_segments)))
+            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, C_1D, kl, doc_segments, lock)))
     except:
         pass
 
+    elapsedTime()
     # print("num_workers,workers:", num_workers, workers)
+    print("i-j\ts\ta\tb\tc\tjs")
     for w in workers:
         w.start()
+    elapsedTime()
     # Wait for all processes to finish
     for w in workers:
         w.join()
+    elapsedTime()
 
 
 def read_csv():
