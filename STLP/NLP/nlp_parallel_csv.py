@@ -32,6 +32,10 @@ doc1_segments = []
 doc2_segments = []
 n_doc1_segments = 0
 n_doc2_segments = 0
+cst = 0.93 # Threshold for CS score
+js0 = 0.19 # Threshold of JS
+js1 = 0.15 # Low JS
+js2 = 0.23 # High JS
 ct0 = 0
 pt = time.perf_counter()
 doc_segments = OrderedDict()
@@ -80,13 +84,25 @@ def get_jaccard_sim(str1, str2):
     b = set(str2.split())
     c = a.intersection(b)
     js = float(len(c) / (len(a)+len(b)-len(c)))
+    js = round(js, 2)
     return js, len(a), len(b), len(c)
+
+
+def classify(c, j):
+    if c > cst:
+        if j >= js1: return 'P' # P: Positive. CS > 0.93 and JS >= 0.15
+        if j < js1: return 'FP' # FP: False Positive. CS > 0.93 and JS < 0.15
+    if c <= cst:
+        if j <= js0: return 'N'
+        if j > js2: return 'FN'
+        if j > js1: return 'UN'
+    return ''
 
 
 def par_CS(m, n, pairs, w, kl, segs, lock):
     global nlp, sr
     read_dictionary()
-    with open("Files/nlp_parallel_csv_results.txt", "a") as f:
+    with open("Files/nlp_parallel_csv_results.txt", "a", encoding="utf8") as f:
         for k in range(m, n):
             pair = pairs[k]
             i_j = pair.split(',')
@@ -101,29 +117,39 @@ def par_CS(m, n, pairs, w, kl, segs, lock):
             doc1nlp = nlp(doc1str)
             doc2nlp = nlp(doc2str)
             sim = doc1nlp.similarity(doc2nlp)
-            s = round(sim, 2)
+            cs = round(sim, 2)
             js, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
-            js = round(js, 2)
             lock.acquire()
-            if s > 0.93:
-                print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, s, a, b, c, js))
-                f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\n".format(w, i, j, s, a, b, c, js, kl[i], kl[j], doc1sstr, doc2sstr))
+            # How to classify:
+            # P: Positive. CS > 0.93 and JS > 0.19
+            # FP: False Positive. CS > 0.93 and JS < 0.15
+            # UP: Undecided Positive. CS > 0.93 and JS between 0.15 and 0.19
+            # UP: Undecided Positive. CS <= 0.93 and JS > 0.23
+
+            # N: Negative. CS <= 0.93 and JS <= 0.19
+            # FN: False Negative. CS <= 0.93 and JS > 0.23
+            # UN: Undecided Negative. CS <= 0.93 and JS between 0.15 and 0.19
+            # UN: Undecided Negative. CS > 0.93 and JS < 0.15
+            cf = classify(cs, js)
+            if cs > 0.93:
+                print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, cs, a, b, c, js, cf))
+                f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\t{}\n".format(w, i, j, cs, a, b, c, js, cf, kl[i], kl[j], doc1sstr, doc2sstr))
             else:
-                print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, s, a, b, c, js))
-                f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\n".format(w, i, j, s, a, b, c, js, kl[i], kl[j], doc1sstr, doc2sstr))
+                print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, cs, a, b, c, js, cf))
+                f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\t{}\n".format(w, i, j, cs, a, b, c, js, cf, kl[i], kl[j], doc1sstr, doc2sstr))
             lock.release()
 
 
-def elapsedTime():
+def elapsedTime(text):
     caller = getframeinfo(stack()[1][0])
     global pt
     ct = time.perf_counter()
     et = round((ct - pt), 2)
-    print("Line {}: Elapsed Time: {} sec.".format(caller.lineno, et))
+    print("Line {}: Time for {}: {} sec.".format(caller.lineno, text, et))
     pt = ct
 
 
-def par_compare(kl):
+def par_compare(kl, nc):
     """
     Function to compare Gavin Mackay's data in the CSV files
     This function sets up multi-processing.
@@ -139,17 +165,15 @@ def par_compare(kl):
             there are 8 workers then each worker will get 8 pairs to process.
     :return:
     """
-    # n_keys = len(kl)
-    n_keys = 10
     pairs = []
-    n_pairs = (n_keys * (n_keys+1) / 2) - n_keys
-    print("No. of files: {}. Total pairs: {}".format(n_keys, n_pairs))
-    for i in range(n_keys):
+    n_pairs = int((nc * (nc+1) / 2) - nc)
+    print("No. of files: {}. Total pairs: {}".format(nc, n_pairs))
+    for i in range(nc):
         # print(i)
-        for j in range(i + 1, n_keys):
+        for j in range(i + 1, nc):
             k = str(i) + ',' + str(j)
             pairs.append(k)
-    elapsedTime()
+    elapsedTime("Creating Pairs")
     # C_1D = mp.RawArray('d', len(pairs))  # flat version of matrix C. 'd' = number
     num_workers = mp.cpu_count()
     chunk_size = len(pairs) // num_workers + 1
@@ -175,16 +199,16 @@ def par_compare(kl):
     except:
         pass
 
-    elapsedTime()
+    elapsedTime("Creating Workers")
     # print("num_workers,workers:", num_workers, workers)
     print("i-j\ts\ta\tb\tc\tjs")
     for w in workers:
         w.start()
-    elapsedTime()
+    elapsedTime("Starting Workers")
     # Wait for all processes to finish
     for w in workers:
         w.join()
-    elapsedTime()
+    elapsedTime("Running Workers")
 
 
 def read_csv():
@@ -217,10 +241,12 @@ def read_csv():
                 try:
                     # This will give an error if the key is not yet defined.
                     # Subsequent values are appended
-                    doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3]
+                    doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3] + ' ' + row[4]
+                    # doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3]
                 except Exception as e:
                     # The first value is assigned to the key
-                    doc_segments[row[4]] = row[3]
+                    doc_segments[row[4]] = row[3] + ' ' + row[4]
+                    # doc_segments[row[4]] = row[3]
 
 
 # - Functions - End -----------------------------------------------------------------
@@ -235,9 +261,11 @@ if __name__ == '__main__':
     # Read the CSV files and create a dict of doc_segments, where the keys are the filenames
     # and the values are the key phrases concatenated together.
     read_csv()
+    # n_compare = len(kl)
+    n_compare = 200
 
     # Take the keys into an array
     keys_list = list(doc_segments.keys())
-    par_compare(keys_list)
+    par_compare(keys_list, n_compare)
     et1 = time.perf_counter() - ct0
     print("Total Time: {:0.2f} sec".format(et1))
