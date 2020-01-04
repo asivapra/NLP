@@ -13,6 +13,7 @@ import multiprocessing as mp
 import csv
 from collections import OrderedDict
 from inspect import getframeinfo, stack
+import sys
 
 html1 = ''
 html2 = ''
@@ -39,6 +40,10 @@ js2 = 0.23 # High JS
 ct0 = 0
 pt = time.perf_counter()
 doc_segments = OrderedDict()
+# nc = 10
+# i_array = mp.RawArray('i', nc)  # flat version of matrix C. 'i' = integer, 'd' = double, 'f' = float
+# j_array = mp.RawArray('i', nc)
+# ij_array = mp.RawArray('f', nc)
 
 
 def read_dictionary():
@@ -99,15 +104,27 @@ def classify(c, j):
     return ''
 
 
-def par_CS(m, n, pairs, w, kl, segs, lock):
+def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
     global nlp, sr
+    # n_w = mp.cpu_count()
+    m_n = int(n-m)
     read_dictionary()
     with open("Files/nlp_parallel_csv_results.txt", "a", encoding="utf8") as f:
         for k in range(m, n):
             pair = pairs[k]
+            m_n -= 1  # Decrement the count for info on progress
             i_j = pair.split(',')
             i = int(i_j[0])
             j = int(i_j[1])
+
+            # The second file is compared only if it has not been positive with another.
+            # i.e. if 0 is positive with 1 and 2, then 1 and will not be compared each other.
+            # Instead, 0 will be added to a group and 1 and 2 will be its members.
+            if i is not 0 and i in j_array:
+                continue
+            if j is not 0 and j in j_array:
+                # p(i, j)
+                continue
             doc1 = Lemmatise(segs[kl[i]])
             doc1sstr = " ".join(doc1)
             doc1str = " ".join(doc1)
@@ -120,23 +137,36 @@ def par_CS(m, n, pairs, w, kl, segs, lock):
             cs = round(sim, 2)
             js, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
             lock.acquire()
-            # How to classify:
-            # P: Positive. CS > 0.93 and JS > 0.19
-            # FP: False Positive. CS > 0.93 and JS < 0.15
-            # UP: Undecided Positive. CS > 0.93 and JS between 0.15 and 0.19
-            # UP: Undecided Positive. CS <= 0.93 and JS > 0.23
+            # cf = classify(cs, js)
 
-            # N: Negative. CS <= 0.93 and JS <= 0.19
-            # FN: False Negative. CS <= 0.93 and JS > 0.23
-            # UN: Undecided Negative. CS <= 0.93 and JS between 0.15 and 0.19
-            # UN: Undecided Negative. CS > 0.93 and JS < 0.15
-            cf = classify(cs, js)
             if cs > 0.93:
-                print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, cs, a, b, c, js, cf))
-                f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\t{}\n".format(w, i, j, cs, a, b, c, js, cf, kl[i], kl[j], doc1sstr, doc2sstr))
+                if i not in i_array:
+                    for kk in range(ngid):
+                        if not i_array[kk]:
+                            i_array[kk] = i
+                            break
+                ij = float(str(i) + "." + str(j))
+                if j not in j_array:
+                    for kk in range(ngid):
+                        if not ij_array[kk]:
+                            ij_array[kk] = ij
+                            break
+                if j not in j_array:
+                    for kk in range(ngid):
+                        if not j_array[kk]:
+                            j_array[kk] = j
+                            break
+                # print("i_array, j_array, ij_array", i_array[:], "|", j_array[:], "|", ij_array[:])
+
+                # print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t{} ******".format(w, i, j, cs, a, b, c, js, cf))
+                print("{}: {} : {}_{}\t{}\t ******".format(w, m_n, i, j, cs))
+                # f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\t{}\n".format(w, i, j, cs, a, b, c, js, cf, kl[i], kl[j], doc1sstr, doc2sstr))
+                f.write("{}_{}\t{}\t{}\tP\t{}\t{}\t{}\t{}\n".format(i, j, cs, js, kl[i], kl[j], doc1sstr, doc2sstr))
             else:
-                print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, cs, a, b, c, js, cf))
-                f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\t{}\n".format(w, i, j, cs, a, b, c, js, cf, kl[i], kl[j], doc1sstr, doc2sstr))
+                # print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, cs, a, b, c, js, cf))
+                # print("{}: {} : {}_{}\t{}".format(w, m_n, i, j, cs))
+                # f.write("{}_{}\t{}\t{}\t\t{}\t{}\t{}\t{}\n".format(i, j, cs, js, kl[i], kl[j], doc1sstr, doc2sstr))
+                pass
             lock.release()
 
 
@@ -147,6 +177,20 @@ def elapsedTime(text):
     et = round((ct - pt), 2)
     print("Line {}: Time for {}: {} sec.".format(caller.lineno, text, et))
     pt = ct
+
+
+def p(s1='', s2=''):
+    """
+    Print the line number and sent text strings. Useful for debugging.
+    :param s1: If empty, print "Debug marker"
+    :param s2: Can be empty
+    :return: None
+    """
+    if s1 is '':
+        s1 = 'Debug marker'
+    caller = getframeinfo(stack()[1][0])
+    print("Line {}:".format(caller.lineno), end='')
+    print(s1, s2)
 
 
 def par_compare(kl, nc):
@@ -165,16 +209,20 @@ def par_compare(kl, nc):
             there are 8 workers then each worker will get 8 pairs to process.
     :return:
     """
+    global i_array, j_array, ij_array
     pairs = []
     n_pairs = int((nc * (nc+1) / 2) - nc)
     print("No. of files: {}. Total pairs: {}".format(nc, n_pairs))
-    for i in range(nc):
+    for i in range(1, nc+1):
         # print(i)
-        for j in range(i + 1, nc):
+        for j in range(i + 1, nc+1):
             k = str(i) + ',' + str(j)
             pairs.append(k)
     elapsedTime("Creating Pairs")
-    # C_1D = mp.RawArray('d', len(pairs))  # flat version of matrix C. 'd' = number
+    i_array = mp.RawArray('i', nc)  # flat version of matrix C. 'i' = integer, 'd' = double, 'f' = float
+    j_array = mp.RawArray('i', nc)
+    ij_array = mp.RawArray('d', nc)
+    # pairIDs = mp.RawArray('f', nc)
     num_workers = mp.cpu_count()
     chunk_size = len(pairs) // num_workers + 1
     n_chunks = len(pairs) // chunk_size
@@ -185,17 +233,18 @@ def par_compare(kl, nc):
     #   worker 1: From pairs[0] to pairs[7]. i.e. b = 0; e = 8
     #   worker 2: from pairs[8] to pairs[15], b = 8; e = 16, and so on.
     with open("Files/nlp_parallel_csv_results.txt", "w") as f:
-        f.write("CPU\ti_j\tCS\twords_i\twords_j\tintersect\tJS\tReal\tFile1\tFile2\tDoc1\tDoc2\n")
+        # f.write("CPU\ti_j\tCS\ti\tj\tc\tJS\tR\tFile1\tFile2\tDoc1\tDoc2\n")
+        f.write("i_j\tCS\tJS\tR\tFile1\tFile2\tDoc1\tDoc2\n")
     for w in range(n_chunks):
         b = w * chunk_size
         e = b + chunk_size
-        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, kl, doc_segments, lock)))
+        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, kl, doc_segments, lock, nc, i_array, j_array, ij_array)))
     try:
         if e:
             r = len(pairs) - e
         if r > 0:
             w += 1
-            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, kl, doc_segments, lock)))
+            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, kl, doc_segments, lock, nc, i_array, j_array, ij_array)))
     except:
         pass
 
@@ -235,6 +284,9 @@ def read_csv():
         for row in csv_reader:
             # Skip the header row
             if line_count == 0:
+                # Add a blank line as first item.
+                # It is required for i and j not to be 0 in 'par_CS' and adding to i_array and j_array will work.
+                doc_segments['______'] = ''
                 line_count += 1
             else:
                 line_count += 1
@@ -249,6 +301,13 @@ def read_csv():
                     # doc_segments[row[4]] = row[3]
 
 
+def count_ungrouped_items(i, j, nc):
+    n = 0
+    for k in range(nc):
+        if k not in i and k not in j:
+            n += 1
+            print(k, n)
+
 # - Functions - End -----------------------------------------------------------------
 # the main:
 if __name__ == '__main__':
@@ -258,14 +317,43 @@ if __name__ == '__main__':
         ['0,1', '0,2', '0,3', '0,4', '1,2', '1,3', '1,4', '2,3', '2,4', '3,4', ...]
     2. Split the pairs array into chunks based on the number of CPUs used.
     """
+    # Temporary test functions. Will exit after calling the function
+    # sys.ext()
+    # ------------------------
     # Read the CSV files and create a dict of doc_segments, where the keys are the filenames
     # and the values are the key phrases concatenated together.
     read_csv()
-    # n_compare = len(kl)
-    n_compare = 200
-
     # Take the keys into an array
     keys_list = list(doc_segments.keys())
+    # n_compare = len(keys_list)
+    n_compare = 200
+
     par_compare(keys_list, n_compare)
+
+    print(i_array[:])
+    print(j_array[:])
+    print(ij_array[:])
+    # Make into groups
+    with open("Files/nlp_parallel_csv_results.txt", "a", encoding="utf8") as f:
+        f.write("Groups\tMembers\n")
+        iva = [i for i in i_array]
+        iva.sort()
+        for i in range(len(iva)):
+            iv = iva[i]
+            fl2 = ""  # List of member files
+            if iv:
+                print("{}:\t".format(iv), end='')
+                f.write("{}\t".format(iv))
+                for j in range(len(ij_array)):
+                    jv = str(ij_array[j]).split(".")
+                    # jfa = jf.split(".")
+                    # print("{} {} {} {}".format(jfa, jfa[0], ii, jfa[1]))
+                    if jv[1] and int(jv[0]) == iv:
+                        print("{} ".format(jv[1]), end='')
+                        f.write("{} ".format(jv[1]))
+                        fl2 += keys_list[int(jv[1])] + "; "
+                print("")
+                f.write("\t\t\t{}\t{}\n".format(keys_list[iv], fl2)) # Write the group file and members
+    count_ungrouped_items(i_array, j_array, n_compare)  # Count and list the lines not included in any group
     et1 = time.perf_counter() - ct0
     print("Total Time: {:0.2f} sec".format(et1))
