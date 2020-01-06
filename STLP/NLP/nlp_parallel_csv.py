@@ -34,10 +34,10 @@ doc2_segments = []
 n_doc1_segments = 0
 n_doc2_segments = 0
 cst = 0.93 # Threshold for CS score
-js0 = 0.19 # Threshold of JS
-js1 = 0.15 # Low JS
-js2 = 0.23 # High JS
-ct0 = 0
+# js0 = 0.19 # Threshold of JS
+# js1 = 0.15 # Low JS
+# js2 = 0.23 # High JS
+ct0 = 0  # Start time
 pt = time.perf_counter()
 doc_segments = OrderedDict()
 # nc = 10
@@ -84,29 +84,28 @@ def GetDoc1and2(i, j, keys_list):
     print(doc1, " | vs. | ", doc2)
 
 
-def get_jaccard_sim(str1, str2):
-    a = set(str1.split())
-    b = set(str2.split())
-    c = a.intersection(b)
-    js = float(len(c) / (len(a)+len(b)-len(c)))
-    js = round(js, 2)
-    return js, len(a), len(b), len(c)
+# def get_jaccard_sim(str1, str2):  # Not Used
+#     a = set(str1.split())
+#     b = set(str2.split())
+#     c = a.intersection(b)
+#     js = float(len(c) / (len(a)+len(b)-len(c)))
+#     js = round(js, 2)
+#     return js, len(a), len(b), len(c)
 
 
-def classify(c, j):
-    if c > cst:
-        if j >= js1: return 'P' # P: Positive. CS > 0.93 and JS >= 0.15
-        if j < js1: return 'FP' # FP: False Positive. CS > 0.93 and JS < 0.15
-    if c <= cst:
-        if j <= js0: return 'N'
-        if j > js2: return 'FN'
-        if j > js1: return 'UN'
-    return ''
+# def classify(c, j):  # Not Used
+#     if c > cst:
+#         if j >= js1: return 'P' # P: Positive. CS > 0.93 and JS >= 0.15
+#         if j < js1: return 'FP' # FP: False Positive. CS > 0.93 and JS < 0.15
+#     if c <= cst:
+#         if j <= js0: return 'N'
+#         if j > js2: return 'FN'
+#         if j > js1: return 'UN'
+#     return ''
 
 
 def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
     global nlp, sr
-    # n_w = mp.cpu_count()
     m_n = int(n-m)
     read_dictionary()
     with open("Files/nlp_parallel_csv_results.txt", "a", encoding="utf8") as f:
@@ -123,7 +122,6 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
             if i is not 0 and i in j_array:
                 continue
             if j is not 0 and j in j_array:
-                # p(i, j)
                 continue
             doc1 = Lemmatise(segs[kl[i]])
             doc1sstr = " ".join(doc1)
@@ -135,11 +133,10 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
             doc2nlp = nlp(doc2str)
             sim = doc1nlp.similarity(doc2nlp)
             cs = round(sim, 2)
-            js, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
+            # js, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
             lock.acquire()
-            # cf = classify(cs, js)
 
-            if cs > 0.93:
+            if cs > cst:
                 if i not in i_array:
                     for kk in range(ngid):
                         if not i_array[kk]:
@@ -161,7 +158,7 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
                 # print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t{} ******".format(w, i, j, cs, a, b, c, js, cf))
                 print("{}: {} : {}_{}\t{}\t ******".format(w, m_n, i, j, cs))
                 # f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\t{}\n".format(w, i, j, cs, a, b, c, js, cf, kl[i], kl[j], doc1sstr, doc2sstr))
-                f.write("{}_{}\t{}\t{}\tP\t{}\t{}\t{}\t{}\n".format(i, j, cs, js, kl[i], kl[j], doc1sstr, doc2sstr))
+                f.write("{}_{}\t{}\t{}\tP\t{}\n".format(i, j, cs, kl[i], kl[j]))
             else:
                 # print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, cs, a, b, c, js, cf))
                 # print("{}: {} : {}_{}\t{}".format(w, m_n, i, j, cs))
