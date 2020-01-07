@@ -259,7 +259,7 @@ def par_ReadUrls(m, n, pairs, w, C_1D):
     :param pairs: the list that holds the pairs of URLs to be compared.
                 e.g. ['0,1', '0,2', '0,3', '0,4', '1,2', '1,3', '1,4', '2,3', '2,4', '3,4']
     :param w: the processor ID (0 to n)
-    :param C_1D: flat array to hold the values. It is accessible across the processes
+    :param [0]: flat array to hold the values. It is accessible across the processes
     :return: no value is returned
     Method:
         1. Each worker gets a range of pairs to process. These are done sequentially
