@@ -34,16 +34,9 @@ doc2_segments = []
 n_doc1_segments = 0
 n_doc2_segments = 0
 cst = 0.93 # Threshold for CS score
-# js0 = 0.19 # Threshold of JS
-# js1 = 0.15 # Low JS
-# js2 = 0.23 # High JS
 ct0 = 0  # Start time
 pt = time.perf_counter()
 doc_segments = OrderedDict()
-# nc = 10
-# i_array = mp.RawArray('i', nc)  # flat version of matrix C. 'i' = integer, 'd' = double, 'f' = float
-# j_array = mp.RawArray('i', nc)
-# ij_array = mp.RawArray('f', nc)
 
 
 def read_dictionary():
@@ -124,10 +117,10 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
             if j is not 0 and j in j_array:
                 continue
             doc1 = Lemmatise(segs[kl[i]])
-            doc1sstr = " ".join(doc1)
+            # doc1sstr = " ".join(doc1)
             doc1str = " ".join(doc1)
             doc2 = Lemmatise(segs[kl[j]])
-            doc2sstr = " ".join(doc2)
+            # doc2sstr = " ".join(doc2)
             doc2str = " ".join(doc2)
             doc1nlp = nlp(doc1str)
             doc2nlp = nlp(doc2str)
@@ -153,16 +146,10 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
                         if not j_array[kk]:
                             j_array[kk] = j
                             break
-                # print("i_array, j_array, ij_array", i_array[:], "|", j_array[:], "|", ij_array[:])
-
-                # print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t{} ******".format(w, i, j, cs, a, b, c, js, cf))
                 print("{}: {} : {}_{}\t{}\t ******".format(w, m_n, i, j, cs))
-                # f.write("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t\t{}\t{}\t{}\t{}\t{}\n".format(w, i, j, cs, a, b, c, js, cf, kl[i], kl[j], doc1sstr, doc2sstr))
-                f.write("{}_{}\t{}\t{}\tP\t{}\n".format(i, j, cs, kl[i], kl[j]))
+                f.write("{}_{}\t{}\t{}\t{}\n".format(i, j, cs, kl[i], kl[j]))
             else:
-                # print("{}\t{}_{}\t{}\t{}\t{}\t{}\t{}\t{}".format(w, i, j, cs, a, b, c, js, cf))
-                # print("{}: {} : {}_{}\t{}".format(w, m_n, i, j, cs))
-                # f.write("{}_{}\t{}\t{}\t\t{}\t{}\t{}\t{}\n".format(i, j, cs, js, kl[i], kl[j], doc1sstr, doc2sstr))
+                f.write("{}_{}\t{}\t{}\t{}\n".format(i, j, cs, kl[i], kl[j]))
                 pass
             lock.release()
 
@@ -190,7 +177,7 @@ def p(s1='', s2=''):
     print(s1, s2)
 
 
-def par_compare(kl, nc):
+def par_compare(kl, nb, ne):
     """
     Function to compare Gavin Mackay's data in the CSV files
     This function sets up multi-processing.
@@ -208,11 +195,14 @@ def par_compare(kl, nc):
     """
     global i_array, j_array, ij_array
     pairs = []
+    nc = ne - nb  # Total number of lines
     n_pairs = int((nc * (nc+1) / 2) - nc)
     print("No. of files: {}. Total pairs: {}".format(nc, n_pairs))
-    for i in range(1, nc+1):
+
+    # Ignore the first line in kl
+    for i in range(nb+1, ne+1):
         # print(i)
-        for j in range(i + 1, nc+1):
+        for j in range(i + 1, ne+1):
             k = str(i) + ',' + str(j)
             pairs.append(k)
     elapsedTime("Creating Pairs")
@@ -230,8 +220,7 @@ def par_compare(kl, nc):
     #   worker 1: From pairs[0] to pairs[7]. i.e. b = 0; e = 8
     #   worker 2: from pairs[8] to pairs[15], b = 8; e = 16, and so on.
     with open("Files/nlp_parallel_csv_results.txt", "w") as f:
-        # f.write("CPU\ti_j\tCS\ti\tj\tc\tJS\tR\tFile1\tFile2\tDoc1\tDoc2\n")
-        f.write("i_j\tCS\tJS\tR\tFile1\tFile2\tDoc1\tDoc2\n")
+        f.write("i_j\tCS\tFile1\tFile2\n")
     for w in range(n_chunks):
         b = w * chunk_size
         e = b + chunk_size
@@ -246,7 +235,6 @@ def par_compare(kl, nc):
         pass
 
     elapsedTime("Creating Workers")
-    # print("num_workers,workers:", num_workers, workers)
     print("i-j\ts\ta\tb\tc\tjs")
     for w in workers:
         w.start()
@@ -291,19 +279,20 @@ def read_csv():
                     # This will give an error if the key is not yet defined.
                     # Subsequent values are appended
                     doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3] + ' ' + row[4]
-                    # doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3]
                 except Exception as e:
                     # The first value is assigned to the key
                     doc_segments[row[4]] = row[3] + ' ' + row[4]
-                    # doc_segments[row[4]] = row[3]
 
 
-def count_ungrouped_items(i, j, nc):
+def count_ungrouped_items(i, j, nb, ne):
     n = 0
-    for k in range(nc):
+    # nc = ne - nb  # Total number of lines
+    print(i[:])
+    print(j[:])
+    for k in range(nb, ne):
         if k not in i and k not in j:
             n += 1
-            print(k, n)
+            print(n, k)
 
 # - Functions - End -----------------------------------------------------------------
 # the main:
@@ -322,11 +311,14 @@ if __name__ == '__main__':
     read_csv()
     # Take the keys into an array
     keys_list = list(doc_segments.keys())
-    # n_compare = len(keys_list)
-    n_compare = 200
+    # nc = len(keys_list)
+    nb = 5
+    ne = 15
 
-    par_compare(keys_list, n_compare)
+    # Do pairwise comparison of  nb to ne lines in the CSV file
+    par_compare(keys_list, nb, ne)
 
+    # Do one-to-one comparision of n0 to n_compare lines against the reference group
     print(i_array[:])
     print(j_array[:])
     print(ij_array[:])
@@ -343,14 +335,12 @@ if __name__ == '__main__':
                 f.write("{}\t".format(iv))
                 for j in range(len(ij_array)):
                     jv = str(ij_array[j]).split(".")
-                    # jfa = jf.split(".")
-                    # print("{} {} {} {}".format(jfa, jfa[0], ii, jfa[1]))
                     if jv[1] and int(jv[0]) == iv:
                         print("{} ".format(jv[1]), end='')
                         f.write("{} ".format(jv[1]))
                         fl2 += keys_list[int(jv[1])] + "; "
                 print("")
                 f.write("\t\t\t{}\t{}\n".format(keys_list[iv], fl2)) # Write the group file and members
-    count_ungrouped_items(i_array, j_array, n_compare)  # Count and list the lines not included in any group
+    count_ungrouped_items(i_array, j_array, nb, ne)  # Count and list the lines not included in any group
     et1 = time.perf_counter() - ct0
     print("Total Time: {:0.2f} sec".format(et1))
