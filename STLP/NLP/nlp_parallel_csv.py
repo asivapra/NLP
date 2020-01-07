@@ -37,7 +37,7 @@ cst = 0.93 # Threshold for CS score
 ct0 = 0  # Start time
 pt = time.perf_counter()
 doc_segments = OrderedDict()
-skip_pair = 0  # Skip a pair if its members are in either 'group' or 'member' list.
+skip_pair = 1  # Skip a pair if its members are in either 'group' or 'member' list.
 
 
 def read_dictionary():
@@ -102,7 +102,7 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
     global nlp, sr
     m_n = int(n-m)
     read_dictionary()
-    print(w, ':', m_n, pairs[m:n])
+    # print(w, ':', m_n, pairs[m:n])
     with open("Files/nlp_parallel_csv_results.txt", "a", encoding="utf8") as f:
         for k in range(m, n):
             pair = pairs[k]
@@ -149,11 +149,12 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
                         if not j_array[kk]:
                             j_array[kk] = j
                             break
-                print("{}: {} : {}_{}\t{}\t ******\t{}\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
+                # print("{}: {} : {}_{}\t{}\t ******\t{}\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
+                print("{}: {} : {}_{}\t{}\t ******".format(w, m_n, i, j, cs))
                 f.write("{}_{}\t{}\t{}\t{}\n".format(i, j, cs, kl[i], kl[j]))
             else:
                 # print("{}: {} : {}_{}\t{}\t{}\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
-                print("{}: {} : {}_{}\t{}".format(w, m_n, i, j, cs))
+                # print("{}: {} : {}_{}\t{}\t\t{}\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
                 f.write("{}_{}\t{}\t{}\t{}\n".format(i, j, cs, kl[i], kl[j]))
                 pass
             lock.release()
@@ -362,11 +363,26 @@ def read_csv():
                 try:
                     # This will give an error if the key is not yet defined. If so, the except block will add a new key.
                     # Subsequent values are appended
-                    doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3] + ' ' + row[4]
+                    # doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3]
+                    doc_segments[row[4]] += row[3] + ' '
+                    # p(doc_segments[row[4]])
                 except Exception as e:
                     # The first value is assigned to the key
-                    doc_segments[row[4]] = row[3] + ' ' + row[4]
+                    doc_segments[row[4]] = row[4] + ' ' + row[3] + ' '
+                    # p(doc_segments[row[4]])
+                # if line_count > 31: break
     elapsedTime("Reading the CSV")
+    processed_file = "Files/processed_file.txt"
+    keys_list = list(doc_segments.keys())
+    k = 0
+    with open(processed_file, "w", encoding="utf8") as f:
+        for key in keys_list:
+            line = key + "\t" + doc_segments[key] + "\n"
+            # print(line)
+            f.write(line)
+            k += 1
+            # if k > 10: break
+    elapsedTime(k)
 
 
 def count_ungrouped_items(i, j, nb, ne):
@@ -398,8 +414,8 @@ if __name__ == '__main__':
     keys_list = list(doc_segments.keys())
 
     # nc = len(keys_list)
-    nb = 400
-    ne = 420
+    nb = 0
+    ne = 500
 
     # Mode of operation: pair_wise = compare all pairs to get groups
     # group_wise: compare linearly with existing groups
@@ -413,7 +429,7 @@ if __name__ == '__main__':
         print(j_array[:])
         print(ij_array[:])
         # Make into groups
-        with open("Files/nlp_parallel_csv_groups.csv", "w", encoding="utf8") as f:
+        with open("Files/nlp_parallel_csv_groups.tsv", "w", encoding="utf8") as f:
             f.write("Groups\tMembers\n")
             iva = [i for i in i_array]
             iva.sort()
