@@ -37,6 +37,7 @@ cst = 0.93 # Threshold for CS score
 ct0 = 0  # Start time
 pt = time.perf_counter()
 doc_segments = OrderedDict()
+skip_pair = 0  # Skip a pair if its members are in either 'group' or 'member' list.
 
 
 def read_dictionary():
@@ -101,6 +102,7 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
     global nlp, sr
     m_n = int(n-m)
     read_dictionary()
+    print(w, ':', m_n, pairs[m:n])
     with open("Files/nlp_parallel_csv_results.txt", "a", encoding="utf8") as f:
         for k in range(m, n):
             pair = pairs[k]
@@ -112,10 +114,11 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
             # The second file is compared only if it has not been positive with another.
             # i.e. if 0 is positive with 1 and 2, then 1 and will not be compared each other.
             # Instead, 0 will be added to a group and 1 and 2 will be its members.
-            if i is not 0 and i in j_array:
-                continue
-            if j is not 0 and j in j_array:
-                continue
+            if skip_pair:
+                if i is not 0 and i in j_array:
+                    continue
+                if j is not 0 and j in j_array:
+                    continue
             doc1 = Lemmatise(segs[kl[i]])
             # doc1sstr = " ".join(doc1)
             doc1str = " ".join(doc1)
@@ -146,9 +149,11 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
                         if not j_array[kk]:
                             j_array[kk] = j
                             break
-                print("{}: {} : {}_{}\t{}\t ******".format(w, m_n, i, j, cs))
+                print("{}: {} : {}_{}\t{}\t ******\t{}\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
                 f.write("{}_{}\t{}\t{}\t{}\n".format(i, j, cs, kl[i], kl[j]))
             else:
+                # print("{}: {} : {}_{}\t{}\t{}\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
+                print("{}: {} : {}_{}\t{}".format(w, m_n, i, j, cs))
                 f.write("{}_{}\t{}\t{}\t{}\n".format(i, j, cs, kl[i], kl[j]))
                 pass
             lock.release()
@@ -175,6 +180,85 @@ def p(s1='', s2=''):
     caller = getframeinfo(stack()[1][0])
     print("Line {}:".format(caller.lineno), end='')
     print(s1, s2)
+
+
+def par_compare_groups(kl, nb, ne):
+    group_ids = []
+    member_ids = []
+    file1 = []
+    file2 = []
+    csv_filename = "Files/nlp_parallel_csv_groups.csv"
+    with open(csv_filename, encoding="utf8") as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        line_count = 0
+        for row in csv_reader:
+            # Skip the header row
+            if line_count == 0:
+                # Add a blank line as first item.
+                # It is required for i and j not to be 0 in 'par_CS' and adding to i_array and j_array will work.
+                # doc_segments['______'] = ''
+                line_count += 1
+            else:
+                line_count += 1
+                try:
+                    group_ids.append(row[0])
+                    member_ids.append(row[1].strip())
+                    file1.append(row[2])
+                    file2.append(row[3])
+                except Exception as e:
+                    pass
+    # print(group_ids)
+    # print(member_ids)
+    # print(file1)
+    # print(file2)
+    pairs = []
+    nc = ne - nb  # Total number of lines
+    for i in range(len(group_ids)):
+        ig = group_ids[i]
+        for j in range(nb, ne):
+            k = str(ig) + ',' + str(j)
+            pairs.append(k)
+
+    print("pairs:", len(pairs))
+    elapsedTime("Creating Pairs")
+    i_array = mp.RawArray('i', nc)  # flat version of matrix C. 'i' = integer, 'd' = double, 'f' = float
+    j_array = mp.RawArray('i', nc)
+    ij_array = mp.RawArray('d', nc)
+    # pairIDs = mp.RawArray('f', nc)
+    num_workers = mp.cpu_count()
+    chunk_size = len(pairs) // num_workers + 1
+    n_chunks = len(pairs) // chunk_size
+    lock = mp.Lock()
+    workers = []
+    # Each worker gets a subset of the pairs.
+    # e.g. 8 workers and 64 pairs:
+    #   worker 1: From pairs[0] to pairs[7]. i.e. b = 0; e = 8
+    #   worker 2: from pairs[8] to pairs[15], b = 8; e = 16, and so on.
+    with open("Files/nlp_parallel_csv_results.txt", "w") as f:
+        f.write("i_j\tCS\tFile1\tFile2\n")
+    for w in range(n_chunks):
+        b = w * chunk_size
+        e = b + chunk_size
+        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, kl, doc_segments, lock, nc, i_array, j_array, ij_array)))
+    try:
+        if e:
+            r = len(pairs) - e
+        if r > 0:
+            w += 1
+            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, kl, doc_segments, lock, nc, i_array, j_array, ij_array)))
+    except:
+        pass
+
+    elapsedTime("Creating Workers")
+    # print("i-j\ts\ta\tb\tc\tjs")
+    for w in workers:
+        w.start()
+    elapsedTime("Starting Workers")
+    # Wait for all processes to finish
+    for w in workers:
+        w.join()
+    elapsedTime("Running Workers")
+
 
 
 def par_compare(kl, nb, ne):
@@ -276,12 +360,13 @@ def read_csv():
             else:
                 line_count += 1
                 try:
-                    # This will give an error if the key is not yet defined.
+                    # This will give an error if the key is not yet defined. If so, the except block will add a new key.
                     # Subsequent values are appended
                     doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3] + ' ' + row[4]
                 except Exception as e:
                     # The first value is assigned to the key
                     doc_segments[row[4]] = row[3] + ' ' + row[4]
+    elapsedTime("Reading the CSV")
 
 
 def count_ungrouped_items(i, j, nb, ne):
@@ -311,36 +396,47 @@ if __name__ == '__main__':
     read_csv()
     # Take the keys into an array
     keys_list = list(doc_segments.keys())
+
     # nc = len(keys_list)
-    nb = 5
-    ne = 15
+    nb = 400
+    ne = 420
 
-    # Do pairwise comparison of  nb to ne lines in the CSV file
-    par_compare(keys_list, nb, ne)
+    # Mode of operation: pair_wise = compare all pairs to get groups
+    # group_wise: compare linearly with existing groups
+    pair_wise = True
+    group_wise = False
+    if pair_wise:
+        # group_wise = False
+        # Do pairwise comparison of  nb to ne lines in the CSV file
+        par_compare(keys_list, nb, ne)
+        print(i_array[:])
+        print(j_array[:])
+        print(ij_array[:])
+        # Make into groups
+        with open("Files/nlp_parallel_csv_groups.csv", "w", encoding="utf8") as f:
+            f.write("Groups\tMembers\n")
+            iva = [i for i in i_array]
+            iva.sort()
+            for i in range(len(iva)):
+                iv = iva[i]
+                fl2 = ""  # List of member files
+                if iv:
+                    print("{}:\t".format(iv), end='')
+                    f.write("{}\t".format(iv))
+                    for j in range(len(ij_array)):
+                        jv = str(ij_array[j]).split(".")
+                        if jv[1] and int(jv[0]) == iv:
+                            print("{} ".format(jv[1]), end='')
+                            f.write("{} ".format(jv[1]))
+                            fl2 += keys_list[int(jv[1])] + ";"
+                    print("")
+                    f.write("\t\t\t{}\t{}\n".format(keys_list[iv], fl2)) # Write the group file and members
+        count_ungrouped_items(i_array, j_array, nb, ne)  # Count and list the lines not included in any group
 
-    # Do one-to-one comparision of n0 to n_compare lines against the reference group
-    print(i_array[:])
-    print(j_array[:])
-    print(ij_array[:])
-    # Make into groups
-    with open("Files/nlp_parallel_csv_results.txt", "a", encoding="utf8") as f:
-        f.write("Groups\tMembers\n")
-        iva = [i for i in i_array]
-        iva.sort()
-        for i in range(len(iva)):
-            iv = iva[i]
-            fl2 = ""  # List of member files
-            if iv:
-                print("{}:\t".format(iv), end='')
-                f.write("{}\t".format(iv))
-                for j in range(len(ij_array)):
-                    jv = str(ij_array[j]).split(".")
-                    if jv[1] and int(jv[0]) == iv:
-                        print("{} ".format(jv[1]), end='')
-                        f.write("{} ".format(jv[1]))
-                        fl2 += keys_list[int(jv[1])] + "; "
-                print("")
-                f.write("\t\t\t{}\t{}\n".format(keys_list[iv], fl2)) # Write the group file and members
-    count_ungrouped_items(i_array, j_array, nb, ne)  # Count and list the lines not included in any group
+    elif group_wise:
+        # pair_wise = False
+        # Do one-to-one comparision of n0 to n_compare lines against the reference group
+        par_compare_groups(keys_list, nb, ne)
+
     et1 = time.perf_counter() - ct0
     print("Total Time: {:0.2f} sec".format(et1))
