@@ -13,6 +13,7 @@ import multiprocessing as mp
 import csv
 from collections import OrderedDict
 from inspect import getframeinfo, stack
+from decimal import *
 import sys
 
 html1 = ''
@@ -99,6 +100,23 @@ def GetDoc1and2(i, j, keys_list):
 
 
 def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
+    """
+    The function that does the pair-wise comparison for CS score
+    Called as: workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, kl, doc_segments, lock, nc, i_array, j_array, ij_array)))
+
+    :param m: starting number of pairs[] to be processed
+    :param n: ending number of of pairs[] to be processed
+    :param pairs: the pairs[] list as e.g. '1,2', '1,3', etc.
+    :param w: the worker number
+    :param kl: keys_list of the doc_segments
+    :param segs: doc_segments
+    :param lock: lock to prevent race conditions
+    :param ngid: number of lines
+    :param i_array: to store the group IDs
+    :param j_array: to store the member IDs
+    :param ij_array: to store the group.member IDs
+    :return:
+    """
     global nlp, sr
     m_n = int(n-m)
     read_dictionary()
@@ -138,11 +156,13 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
                         if not i_array[kk]:
                             i_array[kk] = i
                             break
-                ij = float(str(i) + "." + str(j))
+                ij = Decimal(str(i) + "." + str(j))
+                p(ij)
                 if j not in j_array:
-                    for kk in range(ngid):
+                    for kk in range(0, ngid*2, 2):
                         if not ij_array[kk]:
-                            ij_array[kk] = ij
+                            ij_array[kk] = i
+                            ij_array[kk+1] = j
                             break
                 if j not in j_array:
                     for kk in range(ngid):
@@ -183,14 +203,91 @@ def p(s1='', s2=''):
     print(s1, s2)
 
 
+def write_out_csv_groups():
+    with open("Files/nlp_parallel_csv_groups.tsv", "w", encoding="utf8") as f:
+        f.write("Groups\tMembers\n")
+        iva = [i for i in i_array]
+        iva.sort()
+        for i in range(len(iva)):
+            iv = iva[i]
+            fl2 = ""  # List of member files
+            if iv:
+                print("{}:\t".format(iv), end='')
+                f.write("{}\t".format(iv))
+                for j in range(len(ij_array)):
+                    jv = str(ij_array[j]).split(".")
+                    if jv[1] and int(jv[0]) == iv:
+                        print("{} ".format(jv[1]), end='')
+                        f.write("{} ".format(jv[1]))
+                        fl2 += keys_list[int(jv[1])] + ";"
+                print("")
+                f.write("\t\t\t{}\t{}\n".format(keys_list[iv], fl2))  # Write the group file and members
+    count_ungrouped_items(i_array, j_array, nb, ne)  # Count and list the lines not included in any group
+
+
+def rewrite_groups_and_members():
+    """
+    Reads the 'i_array' and 'ij_array' to add member IDs to teh reference groups
+    i_array:  [11, 131, 217, 0, 0, 0]
+    ij_array: [11, 518, 131, 517, 131, 520, 217, 515, 0, 0, 0, 0]
+    The ij_array is twice as long as i_array and holds pairs of integers as i,j
+    Nested iteration of i_array and ij_array will get the j values (member ID) corresponding to i (group ID)
+
+    :return:
+    """
+    # print(len(group_ids))
+    # print(group_ids)
+    # print(member_ids)
+    # print(ij_array[:])
+    with open("Files/groups_and_members.txt", "w", encoding="utf8") as f:
+        for i in range(len(group_ids)):
+            iv = int(group_ids[i])
+            jv = member_ids[i]
+            for j in range(0, len(ij_array), 2):
+                ij = ij_array[j]
+                if ij == 0: break
+                if iv is ij:
+                    jv += ' ' + str(ij_array[j+1])
+                    member_ids[i] = jv
+                    # print(jv)
+            # print("{}\t{}".format(iv, jv))
+            f.write("{}\t{}\n".format(iv, jv))
+    # print(member_ids)
+
+
+def rewrite_groups_and_members_0():
+    print(len(group_ids))
+    print(group_ids)
+    print(member_ids)
+    print(ij_array[:])
+    with open("Files/groups_and_members.txt", "w", encoding="utf8") as f:
+        for i in range(len(group_ids)):
+            iv = int(group_ids[i])
+            jv = member_ids[i]
+            for j in ij_array:
+                if j == 0.0: continue
+                ij = int(j)
+                im = str(j).split('.')[1]
+                # print(im)
+                if iv is ij:
+                    jv += ' ' + im
+                    member_ids[i] = jv
+                    # print(jv)
+            print("{}\t{}".format(iv, jv))
+            f.write("{}\t{}\n".format(iv, jv))
+    print(member_ids)
+
+
+
 def par_compare_groups(kl, nb, ne):
+    global i_array, j_array, ij_array, group_ids, member_ids
     group_ids = []
     member_ids = []
     file1 = []
     file2 = []
-    csv_filename = "Files/nlp_parallel_csv_groups.csv"
+    csv_filename = "Files/groups_and_members.txt"
     with open(csv_filename, encoding="utf8") as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
+        csv_reader = csv.reader(csv_file, delimiter='\t')
         line_count = 0
         for row in csv_reader:
             # Skip the header row
@@ -224,7 +321,7 @@ def par_compare_groups(kl, nb, ne):
     elapsedTime("Creating Pairs")
     i_array = mp.RawArray('i', nc)  # flat version of matrix C. 'i' = integer, 'd' = double, 'f' = float
     j_array = mp.RawArray('i', nc)
-    ij_array = mp.RawArray('d', nc)
+    ij_array = mp.RawArray('i', nc*2)
     # pairIDs = mp.RawArray('f', nc)
     num_workers = mp.cpu_count()
     chunk_size = len(pairs) // num_workers + 1
@@ -268,7 +365,7 @@ def par_compare(kl, nb, ne):
     This function sets up multi-processing.
     STEPS
         1. Create an array of the pairs of comparisons. This is in the form of a list as below, where the numbers are the indices of the URLs...
-            ['0,1', '0,2', '0,3', '0,4', '1,2', '1,3', '1,4', '2,3', '2,4', '3,4']
+            ['1,2', '1,3', '1,4', '2,3', '2,4', '3,4']
         2. Create a flat array that works across multiple processes.
             It will hold the results from every sub-process and finally compiles them into one list
         3. Find the number of CPUs on the system.
@@ -293,7 +390,7 @@ def par_compare(kl, nb, ne):
     elapsedTime("Creating Pairs")
     i_array = mp.RawArray('i', nc)  # flat version of matrix C. 'i' = integer, 'd' = double, 'f' = float
     j_array = mp.RawArray('i', nc)
-    ij_array = mp.RawArray('d', nc)
+    ij_array = mp.RawArray('i', nc*2)
     # pairIDs = mp.RawArray('f', nc)
     num_workers = mp.cpu_count()
     chunk_size = len(pairs) // num_workers + 1
@@ -347,42 +444,46 @@ def read_csv():
     :return:
     """
     global doc_segments
-    csv_filename = "Files/stlprecordassociationkeyphrases.typed.csv"
-    with open(csv_filename, encoding="utf8") as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        line_count = 0
-        for row in csv_reader:
-            # Skip the header row
-            if line_count == 0:
-                # Add a blank line as first item.
-                # It is required for i and j not to be 0 in 'par_CS' and adding to i_array and j_array will work.
-                doc_segments['______'] = ''
-                line_count += 1
-            else:
-                line_count += 1
-                try:
-                    # This will give an error if the key is not yet defined. If so, the except block will add a new key.
-                    # Subsequent values are appended
-                    # doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3]
-                    doc_segments[row[4]] += row[3] + ' '
-                    # p(doc_segments[row[4]])
-                except Exception as e:
-                    # The first value is assigned to the key
-                    doc_segments[row[4]] = row[4] + ' ' + row[3] + ' '
-                    # p(doc_segments[row[4]])
-                # if line_count > 31: break
-    elapsedTime("Reading the CSV")
-    processed_file = "Files/processed_file.txt"
-    keys_list = list(doc_segments.keys())
-    k = 0
-    with open(processed_file, "w", encoding="utf8") as f:
-        for key in keys_list:
-            line = key + "\t" + doc_segments[key] + "\n"
-            # print(line)
-            f.write(line)
-            k += 1
-            # if k > 10: break
-    elapsedTime(k)
+    read_csv_file = True
+    write_processed_file = True
+    if read_csv_file:
+        csv_filename = "Files/stlprecordassociationkeyphrases.typed.csv"
+        with open(csv_filename, encoding="utf8") as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            line_count = 0
+            for row in csv_reader:
+                # Skip the header row
+                if line_count == 0:
+                    # Add a blank line as first item.
+                    # It is required for i and j not to be 0 in 'par_CS' and adding to i_array and j_array will work.
+                    doc_segments['______'] = ''
+                    line_count += 1
+                else:
+                    line_count += 1
+                    try:
+                        # This will give an error if the key is not yet defined. If so, the except block will add a new key.
+                        # Subsequent values are appended
+                        # doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3]
+                        doc_segments[row[4]] += row[3] + ' '
+                        # p(doc_segments[row[4]])
+                    except Exception as e:
+                        # The first value is assigned to the key
+                        doc_segments[row[4]] = row[4] + ' ' + row[3] + ' '
+                        # p(doc_segments[row[4]])
+                    # if line_count > 31: break
+        elapsedTime("Reading the CSV")
+    if write_processed_file:
+        processed_file = "Files/processed_file.txt"
+        keys_list = list(doc_segments.keys())
+        k = 0
+        with open(processed_file, "w", encoding="utf8") as f:
+            for key in keys_list:
+                line = key + "\t" + doc_segments[key] + "\n"
+                # print(line)
+                f.write(line)
+                k += 1
+            text = "writing " + str(k) + " lines to " + processed_file
+        elapsedTime(text)
 
 
 def count_ungrouped_items(i, j, nb, ne):
@@ -414,13 +515,13 @@ if __name__ == '__main__':
     keys_list = list(doc_segments.keys())
 
     # nc = len(keys_list)
-    nb = 0
-    ne = 500
+    nb = 500
+    ne = 3000
 
     # Mode of operation: pair_wise = compare all pairs to get groups
     # group_wise: compare linearly with existing groups
-    pair_wise = True
-    group_wise = False
+    pair_wise = False
+    group_wise = True
     if pair_wise:
         # group_wise = False
         # Do pairwise comparison of  nb to ne lines in the CSV file
@@ -453,6 +554,10 @@ if __name__ == '__main__':
         # pair_wise = False
         # Do one-to-one comparision of n0 to n_compare lines against the reference group
         par_compare_groups(keys_list, nb, ne)
+        print(i_array[:])
+        print(j_array[:])
+        print(ij_array[:])
+        rewrite_groups_and_members()
 
     et1 = time.perf_counter() - ct0
     print("Total Time: {:0.2f} sec".format(et1))
