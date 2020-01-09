@@ -156,15 +156,14 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
                         if not i_array[kk]:
                             i_array[kk] = i
                             break
-                ij = Decimal(str(i) + "." + str(j))
-                p(ij)
+                # ij = Decimal(str(i) + "." + str(j))
                 if j not in j_array:
                     for kk in range(0, ngid*2, 2):
                         if not ij_array[kk]:
                             ij_array[kk] = i
                             ij_array[kk+1] = j
                             break
-                if j not in j_array:
+                if j not in j_array:  # Not needed ?
                     for kk in range(ngid):
                         if not j_array[kk]:
                             j_array[kk] = j
@@ -174,7 +173,8 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
                 f.write("{}_{}\t{}\t{}\t{}\n".format(i, j, cs, kl[i], kl[j]))
             else:
                 # print("{}: {} : {}_{}\t{}\t{}\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
-                # print("{}: {} : {}_{}\t{}\t\t{}\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
+                print("{}: {} : {}_{}\t{}".format(w, m_n, i, j, cs))
+                # print("{}: {} : {}_{}\t{}\t\t{}\t|\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
                 f.write("{}_{}\t{}\t{}\t{}\n".format(i, j, cs, kl[i], kl[j]))
                 pass
             lock.release()
@@ -203,26 +203,54 @@ def p(s1='', s2=''):
     print(s1, s2)
 
 
+def test_out_csv_groups():
+    i_array = [485, 558, 581, 532, 487, 561, 546, 563, 494, 590, 537, 552, 568, 556, 541, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    ij_array = [485, 617, 558, 572, 581, 586, 532, 549, 532, 551, 487, 577, 581, 628, 561, 562, 532, 611, 561, 589, 546, 555, 563, 564, 494, 516, 590, 624, 494, 558, 537, 621, 552, 570, 568, 585, 552, 613, 556, 581, 541, 598, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    iva = [i for i in i_array]
+    iva.sort()
+    for i in range(len(iva)):
+        iv = iva[i]
+        if iv:
+            print("{}:\t".format(iv), end='')
+            # f.write("{}\t".format(iv))
+            for j in range(0, len(ij_array), 2):
+                ij = ij_array[j]
+                if ij == 0: break
+                if iv is ij:
+                    jv = ij_array[j + 1]
+                    # f.write("{} ".format(jv))
+                    print("{} ".format(jv), end='')
+            # f.write("\n")
+            print("")
+
+
 def write_out_csv_groups():
+    global i_array, j_array, ij_array
+    print(i_array[:])
+    print(ij_array[:])
     with open("Files/nlp_parallel_csv_groups.tsv", "w", encoding="utf8") as f:
         f.write("Groups\tMembers\n")
         iva = [i for i in i_array]
         iva.sort()
+        p(iva)
+        p(len(ij_array))
         for i in range(len(iva)):
             iv = iva[i]
-            fl2 = ""  # List of member files
+            # fl2 = ""  # List of member files
             if iv:
-                print("{}:\t".format(iv), end='')
                 f.write("{}\t".format(iv))
-                for j in range(len(ij_array)):
-                    jv = str(ij_array[j]).split(".")
-                    if jv[1] and int(jv[0]) == iv:
-                        print("{} ".format(jv[1]), end='')
-                        f.write("{} ".format(jv[1]))
-                        fl2 += keys_list[int(jv[1])] + ";"
+                print("{}:\t".format(iv), end='')
+                for j in range(0, len(ij_array), 2):
+                    ij = ij_array[j]
+                    if ij == 0: break
+                    if iv is ij:
+                        jv = ij_array[j + 1]
+                        f.write("{} ".format(jv))
+                        print("{} ".format(jv), end='')
+                f.write("\n")
                 print("")
-                f.write("\t\t\t{}\t{}\n".format(keys_list[iv], fl2))  # Write the group file and members
-    count_ungrouped_items(i_array, j_array, nb, ne)  # Count and list the lines not included in any group
+                # f.write("\t\t\t{}\t{}\n".format(keys_list[iv], fl2))  # Write the group file and members
+    # count_ungrouped_items(i_array, j_array, nb, ne)  # Count and list the lines not included in any group
 
 
 def rewrite_groups_and_members():
@@ -276,6 +304,82 @@ def rewrite_groups_and_members_0():
             print("{}\t{}".format(iv, jv))
             f.write("{}\t{}\n".format(iv, jv))
     print(member_ids)
+
+
+def par_compare_list(kl, nb, ne):
+    """
+    Read the Files/groups_and_members.txt to make a list of all un-grouped numbers
+    :return:
+    """
+    global i_array, j_array, ij_array
+    gn = []  # Grouped numbers
+    ugn = [] # Un-grouped numbers
+    csv_filename = "Files/groups_and_members.txt"
+    with open(csv_filename, encoding="utf8") as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter='\t')
+        for row in csv_reader:
+            ml = row[1].split()
+            gn.append(int(row[0]))
+            for i in ml:
+                gn.append(int(i))
+        gn.sort()
+    # List the ungrouped items
+    for i in range(1, ne):
+        if i not in gn:
+            ugn.append(i)
+    # p(ugn)
+    p(len(ugn))
+    nb = 0
+    # ne = len(ugn)
+    ne = 900
+    pairs = []
+    nc = ne - nb  # Total number of lines
+    for i in range(nb, ne):
+        ig = ugn[i]
+        for j in range(i + 1, ne):
+            jg = ugn[j]
+            k = str(ig) + ',' + str(jg)
+            pairs.append(k)
+    p(len(pairs))
+    # et = (len(pairs) * 0.14) / 3600
+    elapsedTime("Creating Pairs")
+    i_array = mp.RawArray('i', nc)  # flat version of matrix C. 'i' = integer, 'd' = double, 'f' = float
+    j_array = mp.RawArray('i', nc)
+    ij_array = mp.RawArray('i', nc*2)
+    # pairIDs = mp.RawArray('f', nc)
+    num_workers = mp.cpu_count()
+    chunk_size = len(pairs) // num_workers + 1
+    n_chunks = len(pairs) // chunk_size
+    lock = mp.Lock()
+    workers = []
+    # Each worker gets a subset of the pairs.
+    # e.g. 8 workers and 64 pairs:
+    #   worker 1: From pairs[0] to pairs[7]. i.e. b = 0; e = 8
+    #   worker 2: from pairs[8] to pairs[15], b = 8; e = 16, and so on.
+    with open("Files/nlp_parallel_csv_results.txt", "w") as f:
+        f.write("i_j\tCS\tFile1\tFile2\n")
+    for w in range(n_chunks):
+        b = w * chunk_size
+        e = b + chunk_size
+        workers.append(mp.Process(target=par_CS, args=(b, e, pairs, w, kl, doc_segments, lock, nc, i_array, j_array, ij_array)))
+    try:
+        if e:
+            r = len(pairs) - e
+        if r > 0:
+            w += 1
+            workers.append(mp.Process(target=par_CS, args=(e, len(pairs), pairs, w, kl, doc_segments, lock, nc, i_array, j_array, ij_array)))
+    except:
+        pass
+
+    elapsedTime("Creating Workers")
+    print("i-j\ts\ta\tb\tc\tjs")
+    for w in workers:
+        w.start()
+    elapsedTime("Starting Workers")
+    # Wait for all processes to finish
+    for w in workers:
+        w.join()
+    elapsedTime("Running Workers")
 
 
 
@@ -521,7 +625,8 @@ if __name__ == '__main__':
     # Mode of operation: pair_wise = compare all pairs to get groups
     # group_wise: compare linearly with existing groups
     pair_wise = False
-    group_wise = True
+    group_wise = False
+    list_wise = True
     if pair_wise:
         # group_wise = False
         # Do pairwise comparison of  nb to ne lines in the CSV file
@@ -558,6 +663,16 @@ if __name__ == '__main__':
         print(j_array[:])
         print(ij_array[:])
         rewrite_groups_and_members()
+    elif list_wise:
+        # test_out_csv_groups()
+        par_compare_list(keys_list, nb, ne)
+        print(i_array[:])
+        print(ij_array[:])
+        with open("Files/i_ij_arrays.txt", "w", encoding="utf8") as f:
+            f.write("{}\n".format(i_array[:]))
+            f.write("{}\n".format(ij_array[:]))
+        p("-----------------------------------")
+        write_out_csv_groups()
 
     et1 = time.perf_counter() - ct0
     print("Total Time: {:0.2f} sec".format(et1))
