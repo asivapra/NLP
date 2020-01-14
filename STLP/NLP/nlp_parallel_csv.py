@@ -150,7 +150,6 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
             sim = doc1nlp.similarity(doc2nlp)
             cs = round(sim, 2)
             # js, a, b, c = get_jaccard_sim(doc1sstr, doc2sstr)
-            lock.acquire()
 
             if cs > cst:
                 if i not in i_array:
@@ -170,16 +169,16 @@ def par_CS(m, n, pairs, w, kl, segs, lock, ngid, i_array, j_array, ij_array):
                         if not j_array[kk]:
                             j_array[kk] = j
                             break
-                # print("{}: {} : {}_{}\t{}\t ******\t{}\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
+                lock.acquire()
                 print("{}: {} : {}_{}\t{}\t ******".format(w, m_n, i, j, cs))
                 f.write("{}_{}\t{}\t{}\t{}\n".format(i, j, cs, kl[i], kl[j]))
+                lock.release()
             else:
-                # print("{}: {} : {}_{}\t{}\t{}\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
-                print("{}: {} : {}_{}\t{}".format(w, m_n, i, j, cs))
-                # print("{}: {} : {}_{}\t{}\t\t{}\t|\t{}".format(w, m_n, i, j, cs, kl[i], kl[j]))
+                lock.acquire()
+                # print("{}: {} : {}_{}\t{}".format(w, m_n, i, j, cs))
                 f.write("{}_{}\t{}\t{}\t{}\n".format(i, j, cs, kl[i], kl[j]))
+                lock.release()
                 pass
-            lock.release()
 
 
 def elapsedTime(text):
@@ -299,35 +298,6 @@ def write_out_csv_groups():
             print("")
 
 
-def write_out_csv_groups_0():
-    global i_array, j_array, ij_array
-    print(i_array[:])
-    print(ij_array[:])
-    with open("Files/nlp_parallel_csv_groups.tsv", "w", encoding="utf8") as f:
-        f.write("Groups\tMembers\n")
-        iva = [i for i in i_array]
-        iva.sort()
-        p(iva)
-        p(len(ij_array))
-        for i in range(len(iva)):
-            iv = iva[i]
-            # fl2 = ""  # List of member files
-            if iv:
-                f.write("{}\t".format(iv))
-                print("{}:\t".format(iv), end='')
-                for j in range(0, len(ij_array), 2):
-                    ij = ij_array[j]
-                    if ij == 0: break
-                    if iv is ij:
-                        jv = ij_array[j + 1]
-                        f.write("{} ".format(jv))
-                        print("{} ".format(jv), end='')
-                f.write("\n")
-                print("")
-                # f.write("\t\t\t{}\t{}\n".format(keys_list[iv], fl2))  # Write the group file and members
-    # count_ungrouped_items(i_array, j_array, nb, ne)  # Count and list the lines not included in any group
-
-
 def rewrite_groups_and_members():
     """
     Reads the 'i_array' and 'ij_array' to add member IDs to teh reference groups
@@ -356,29 +326,6 @@ def rewrite_groups_and_members():
             # print("{}\t{}".format(iv, jv))
             f.write("{}\t{}\n".format(iv, jv))
     # print(member_ids)
-
-
-def rewrite_groups_and_members_0():
-    print(len(group_ids))
-    print(group_ids)
-    print(member_ids)
-    print(ij_array[:])
-    with open("Files/groups_and_members.txt", "w", encoding="utf8") as f:
-        for i in range(len(group_ids)):
-            iv = int(group_ids[i])
-            jv = member_ids[i]
-            for j in ij_array:
-                if j == 0.0: continue
-                ij = int(j)
-                im = str(j).split('.')[1]
-                # print(im)
-                if iv is ij:
-                    jv += ' ' + im
-                    member_ids[i] = jv
-                    # print(jv)
-            print("{}\t{}".format(iv, jv))
-            f.write("{}\t{}\n".format(iv, jv))
-    print(member_ids)
 
 
 def par_compare_list(kl, nb, ne):
@@ -487,9 +434,6 @@ def par_compare_groups(kl, nb, ne):
         for row in csv_reader:
             # Skip the header row
             if line_count == 0:
-                # Add a blank line as first item.
-                # It is required for i and j not to be 0 in 'par_CS' and adding to i_array and j_array will work.
-                # doc_segments['______'] = ''
                 line_count += 1
             else:
                 line_count += 1
@@ -511,7 +455,7 @@ def par_compare_groups(kl, nb, ne):
         for j in range(nb, ne):
             k = str(ig) + ',' + str(j)
             pairs.append(k)
-
+    # p(pairs)
     print("pairs:", len(pairs))
     elapsedTime("Creating Pairs")
     i_array = mp.RawArray('i', nc)  # flat version of matrix C. 'i' = integer, 'd' = double, 'f' = float
@@ -523,10 +467,6 @@ def par_compare_groups(kl, nb, ne):
     n_chunks = len(pairs) // chunk_size
     lock = mp.Lock()
     workers = []
-    # Each worker gets a subset of the pairs.
-    # e.g. 8 workers and 64 pairs:
-    #   worker 1: From pairs[0] to pairs[7]. i.e. b = 0; e = 8
-    #   worker 2: from pairs[8] to pairs[15], b = 8; e = 16, and so on.
     with open("Files/nlp_parallel_csv_results.txt", "w") as f:
         f.write("i_j\tCS\tFile1\tFile2\n")
     for w in range(n_chunks):
@@ -543,7 +483,6 @@ def par_compare_groups(kl, nb, ne):
         pass
 
     elapsedTime("Creating Workers")
-    # print("i-j\ts\ta\tb\tc\tjs")
     for w in workers:
         w.start()
     elapsedTime("Starting Workers")
@@ -551,7 +490,6 @@ def par_compare_groups(kl, nb, ne):
     for w in workers:
         w.join()
     elapsedTime("Running Workers")
-
 
 
 def par_compare(kl, nb, ne):
@@ -731,8 +669,8 @@ if __name__ == '__main__':
     keys_list = list(doc_segments.keys())
 
     # nc = len(keys_list)
-    nb = 500
-    ne = 3000
+    nb = 3000
+    ne = 4600
 
     # Mode of operation: pair_wise = compare all pairs to get groups
     # group_wise: compare linearly with existing groups
@@ -784,7 +722,7 @@ if __name__ == '__main__':
         to the 'write_out_csv_groups' after commenting out the remaining lines in the below block.
         
         The displayed results are then copied and added to the end in Files/groups_and_members.xlsx and
-        exported as Files/groups_and_members.txt for further runs.
+        exported as Files/groups_and_members.txt for further runs. 
         """
         # write_out_csv_groups()
         par_compare_list(keys_list, nb, ne)
