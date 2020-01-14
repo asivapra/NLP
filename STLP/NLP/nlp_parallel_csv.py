@@ -1,4 +1,4 @@
-#!/bin/env python
+#!/usr/local/anaconda3/bin/python
 import spacy
 import urllib.request
 from bs4 import BeautifulSoup
@@ -53,6 +53,7 @@ def read_dictionary():
     print("Starting to read dictionary and stopwords")
     nlp = spacy.load("en_core_web_md")
     sr = stopwords.words('english')
+    print("Finished reading dictionary and stopwords")
     # et = time.perf_counter() - ct0
     # print("Finished reading: {:0.2f} sec".format(et))
 
@@ -308,22 +309,27 @@ def rewrite_groups_and_members():
 
     :return:
     """
-    # print(len(group_ids))
-    # print(group_ids)
-    # print(member_ids)
-    # print(ij_array[:])
+    global i_array, j_array, ij_array, group_ids, member_ids
+    print(len(group_ids))
+    print(group_ids)
+    print(member_ids)
+    print(ij_array[:])
     with open("Files/groups_and_members.txt", "w", encoding="utf8") as f:
+        f.write("Groups\tMEMBERS\n")
         for i in range(len(group_ids)):
             iv = int(group_ids[i])
             jv = member_ids[i]
+            print("A. {} : {}".format(iv, jv))
             for j in range(0, len(ij_array), 2):
                 ij = ij_array[j]
+                print("B. {} : {}".format(iv, ij))
                 if ij == 0: break
                 if iv is ij:
+                    print("C. {} : {}".format(iv, ij))
                     jv += ' ' + str(ij_array[j+1])
                     member_ids[i] = jv
-                    # print(jv)
-            # print("{}\t{}".format(iv, jv))
+                    print("iv, jv", iv, jv)
+            print("{}\t{}".format(iv, jv))
             f.write("{}\t{}\n".format(iv, jv))
     # print(member_ids)
 
@@ -669,8 +675,8 @@ if __name__ == '__main__':
     keys_list = list(doc_segments.keys())
 
     # nc = len(keys_list)
-    nb = 3000
-    ne = 4600
+    nb = 4600
+    ne = 4605
 
     # Mode of operation: pair_wise = compare all pairs to get groups
     # group_wise: compare linearly with existing groups
@@ -709,9 +715,16 @@ if __name__ == '__main__':
         # pair_wise = False
         # Do one-to-one comparision of n0 to n_compare lines against the reference group
         par_compare_groups(keys_list, nb, ne)
-        print(i_array[:])
-        print(j_array[:])
-        print(ij_array[:])
+        with open("Files/i_ij_arrays.txt", "a", encoding="utf8") as f:
+            ls = [e for i, e in enumerate(i_array) if e != 0]
+            print(ls)
+            f.write("{}\n".format(ls[:]))
+            ls = [e for i, e in enumerate(ij_array) if e != 0]
+            print(ls)
+            f.write("{}\n".format(ls[:]))
+        # print(i_array[:])
+        # print(j_array[:])
+        # print(ij_array[:])
         rewrite_groups_and_members()
     elif list_wise:
         """
