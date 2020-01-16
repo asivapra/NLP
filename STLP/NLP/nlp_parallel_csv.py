@@ -16,7 +16,7 @@ from inspect import getframeinfo, stack
 from decimal import *
 import sys
 import collections
-
+import string
 
 html1 = ''
 html2 = ''
@@ -310,25 +310,29 @@ def rewrite_groups_and_members():
     :return:
     """
     global i_array, j_array, ij_array, group_ids, member_ids
+    # group_ids = [552, 966, 1200]
+    # member_ids = ['570 613 617 670 723 1189 1235 1479 1606 1609', '1480 1575', '1398']
+    # ij_array = [552, 3007, 966, 3005, 966, 3006, 552, 3025, 552, 3044, 1200, 3010]
     print(len(group_ids))
     print(group_ids)
     print(member_ids)
     print(ij_array[:])
+    # p(len(ij_array))
     with open("Files/groups_and_members.txt", "w", encoding="utf8") as f:
-        f.write("Groups\tMEMBERS\n")
+        f.write("Groups\tMembers\n")
         for i in range(len(group_ids)):
             iv = int(group_ids[i])
             jv = member_ids[i]
-            print("A. {} : {}".format(iv, jv))
+            # print("A. {} : {}".format(iv, jv))
             for j in range(0, len(ij_array), 2):
                 ij = ij_array[j]
-                print("B. {} : {}".format(iv, ij))
+                # print("B. {} : {}".format(iv, ij))
                 if ij == 0: break
                 if iv is ij:
-                    print("C. {} : {}".format(iv, ij))
+                    # print("C. {} : {}".format(iv, jv))
                     jv += ' ' + str(ij_array[j+1])
                     member_ids[i] = jv
-                    print("iv, jv", iv, jv)
+                    # print("iv, jv", iv, jv)
             print("{}\t{}".format(iv, jv))
             f.write("{}\t{}\n".format(iv, jv))
     # print(member_ids)
@@ -500,10 +504,10 @@ def par_compare_groups(kl, nb, ne):
 
 def par_compare(kl, nb, ne):
     """
-    Function to compare Gavin Mackay's data in the CSV files
-    This function sets up multi-processing.
+    Function to compare Gavin Mackay's data in the CSV files This function sets up multi-processing.
     STEPS
-        1. Create an array of the pairs of comparisons. This is in the form of a list as below, where the numbers are the indices of the URLs...
+        1. Create an array of the pairs of comparisons.
+        This is in the form of a list as below, where the numbers are the indices of the URLs...
             ['1,2', '1,3', '1,4', '2,3', '2,4', '3,4']
         2. Create a flat array that works across multiple processes.
             It will hold the results from every sub-process and finally compiles them into one list
@@ -591,6 +595,8 @@ def read_csv():
             csv_reader = csv.reader(csv_file, delimiter=',')
             line_count = 0
             for row in csv_reader:
+                filename = ''.join(filter(lambda x: x in string.printable, row[4]))
+                keyphrases = ''.join(filter(lambda x: x in string.printable, row[3]))
                 # Skip the header row
                 if line_count == 0:
                     # Add a blank line as first item.
@@ -602,14 +608,17 @@ def read_csv():
                     try:
                         # This will give an error if the key is not yet defined. If so, the except block will add a new key.
                         # Subsequent values are appended
-                        # doc_segments[row[4]] = doc_segments[row[4]] + ' ' + row[3]
-                        doc_segments[row[4]] += row[3] + ' '
-                        # p(doc_segments[row[4]])
+                        # filename = ''.join(filter(lambda x: x in string.printable, row[4]))
+                        # keyphrases = ''.join(filter(lambda x: x in string.printable, row[3]))
+
+                        # doc_segments[filename] += filename + ' '  # Add the filename to the keyphrases
+                        doc_segments[filename] += keyphrases + ' '
                     except Exception as e:
+                        # filename = ''.join(filter(lambda x: x in string.printable, row[4]))
+                        # keyphrases = ''.join(filter(lambda x: x in string.printable, row[3]))
                         # The first value is assigned to the key
-                        doc_segments[row[4]] = row[4] + ' ' + row[3] + ' '
-                        # p(doc_segments[row[4]])
-                    # if line_count > 31: break
+                        doc_segments[filename] = filename + ' '  # Add the filename to the keyphrases
+                        doc_segments[filename] += keyphrases + ' '
         elapsedTime("Reading the CSV")
     if write_processed_file:
         processed_file = "Files/processed_file.txt"
@@ -654,6 +663,229 @@ def merge_groups_ids():
         lines = f.readlines()
     p(lines)
 
+
+def remove_from_groups_and_members(i, j):
+    global csv_lines, groups_and_members
+    print(len(groups_and_members), i, j, ' ', end='')
+    for k in range(1, len(groups_and_members)):
+        fields = groups_and_members[k].split('\t')
+        if int(fields[0]) is i:
+            # p(fields[0], i)
+            jv = fields[1]
+            # p(jv)
+            jvr = str(j) + ' '  # Internal item with a space after
+            if jvr in jv:
+                jv = jv.replace(jvr, '')
+            else:
+                jvr = str(j)  # The last item; no space after
+                jv = jv.replace(jvr, '')
+
+            # p(jv)
+            newline = str(i) + '\t' + jv
+            # p(newline)
+            groups_and_members[k] = newline
+            break
+
+
+
+def test_original_group(i, j):
+    global csv_lines, groups_and_members
+    gl = csv_lines[i].split('\t')
+    gm = csv_lines[j].split('\t')
+    doc1 = Lemmatise(gl[1])
+    doc1str = " ".join(doc1)
+    doc1nlp = nlp(doc1str)
+    doc2 = Lemmatise(gm[1])
+    doc2str = " ".join(doc2)
+    doc2nlp = nlp(doc2str)
+    sim = doc1nlp.similarity(doc2nlp)
+    cs = round(sim, 2)
+    print("Checking again:", end='')
+    stars = '--------- OK'
+    if cs < 0.94:
+        remove_from_groups_and_members(i, j)
+        stars = 'xxxxxxxx Not OK'
+        print(cs, stars)
+    else:
+        print(i, j, cs, stars)
+
+
+
+def test_intra_group():
+    """
+    Test a group's members against its own super group keyphrases
+    e.g. group id 1 against ['15', '66', '77', ... ]
+    :return:
+    """
+    global csv_lines, groups_and_members
+    read_dictionary()
+    infile = "Files/processed_file.txt"
+    with open(infile, encoding="utf8") as f:
+        csv_lines = f.readlines()
+
+    infile = "Files/groups_and_members.txt"
+    with open(infile, encoding="utf8") as f:
+        groups_and_members = f.readlines()
+
+    infile = "Files/super_groups.txt"
+    with open(infile, encoding="utf8") as f:
+        lines = f.readlines()
+        # for line in lines:
+        for n in range (0, len(lines)):
+            # line = lines[n]
+            fields = lines[n].split('\t')
+            i = int(fields[0])
+            # if i is not 3: continue
+            jv = fields[1].split()
+            jvl = len(jv)
+            if jvl > 10:
+                jvl = 10
+            # gf = fields[2]
+            keyphrases = fields[3].strip()
+            print(i, jv[:jvl])
+            doc1 = Lemmatise(keyphrases)
+            doc1str = " ".join(doc1)
+            doc1nlp = nlp(doc1str)
+            # p(i, csv_lines[i])
+            # break
+            for j in jv:
+                fields = csv_lines[int(j)].split('\t')
+                doc2 = Lemmatise(fields[1].strip())
+                doc2str = " ".join(doc2)
+                doc2nlp = nlp(doc2str)
+                sim = doc1nlp.similarity(doc2nlp)
+                stars = ''
+                cs = round(sim, 2)
+                if cs < 0.94:
+                    stars = '*******'
+                    # print(i, j, cs, stars)
+                    test_original_group(i, int(j))
+                else:
+                    # print(i, j, cs)
+                    pass
+                # p(j, fields[1])
+                # break
+            # break
+        # print(groups_and_members)
+        outfile = "Files/groups_and_members.txt"
+        with open(outfile, 'w', encoding="utf8") as f:
+            for line in groups_and_members:
+                f.write(line)
+
+def test_super_group_0():
+    read_dictionary()
+    infile = "Files/super_groups.txt"
+    with open(infile, encoding="utf8") as f:
+        lines = f.readlines()
+        line_count = 0
+        for line in lines:
+            fields = line.split('\t')
+            # Skip the header row
+            if line_count == 0:
+                doc1 = Lemmatise(fields[1].strip())
+                p(fields[0])
+                line_count += 1
+            else:
+                doc2 = Lemmatise(fields[1].strip())
+                p(fields[0])
+                line_count += 1
+                # break
+                doc1str = " ".join(doc1)
+                doc1nlp = nlp(doc1str)
+                doc2str = " ".join(doc2)
+                doc2nlp = nlp(doc2str)
+                sim = doc1nlp.similarity(doc2nlp)
+                cs = round(sim, 2)
+                p(cs)
+
+
+def sort_groups_and_members():
+    infile = "Files/groups_and_members.txt"
+    with open(infile, encoding="utf8") as f:
+        groups_and_members = f.readlines()
+        lg = len(groups_and_members)
+        for n in range(1, lg):
+            fields = groups_and_members[n].strip().split('\t')
+            jv = list(map(int, fields[1].split())) # split a string array at spaces and convert into an int array
+            jv = sorted(set(jv))  # Sort and remove duplicates
+            fields[1] = ' '.join([str(x) for x in jv]) + '\n'
+            groups_and_members[n] = '\t'.join(fields)
+
+    outfile = "Files/groups_and_members.txt"
+    with open(outfile, 'w', encoding="utf8") as f:
+        for line in groups_and_members:
+            f.write("{}".format(line))
+    # sys.exit()
+
+
+def create_super_group():
+    """
+    To create a master doc, we can try this method:
+•	Concatenate the keyphrases for a group and all its members.
+•	Remove duplicates or keep the duplicates.
+•	Lemmatise or let the program do it on the fly.
+•	Compare the group and all its members against this master doc.
+•	Compare other groups with this master doc.
+
+    :return:
+    """
+
+    # i = 0
+    # j = 0
+    # keyphrases = ''
+    # csv_lines = []
+
+    # Read the input file. This is created by 'def read_csv'
+    infile = "Files/processed_file.txt"
+    with open(infile, encoding="utf8") as f:
+        csv_lines = f.readlines()
+
+    outfile = "Files/super_groups.txt"
+    # Create an empty output file
+    with open(outfile, "w", encoding="utf8") as f:
+        f.write("")
+
+    sort_groups_and_members() #  Sort the group IDs and member IDs in this file
+
+    with open(outfile, "a", encoding="utf8") as fout:
+        # Read the groups and members list
+        infile = "Files/groups_and_members.txt"
+        with open(infile, encoding="utf8") as f:
+            csv_rows = csv.reader(f, delimiter='\t')
+            line_count = 0
+            for row in csv_rows:
+                # Skip the header row
+                if line_count == 0:
+                    line_count += 1
+                else:
+                    line_count += 1
+                    # Get the group number. This is the index of the line in 'csv_lines[]'
+                    i = int(row[0].replace(' ', ''))
+
+                    # Get the members' list for the group ID. This is a space-separated string of numbers
+                    j = row[1]
+                    keyphrases = ''
+
+                    # Get the group file and take its filename
+                    gf = csv_lines[i].split('\t')
+                    # print(gf[0].strip(), '\t', end='')
+
+                    # Write the group filename in column A
+                    fout.write("{}\t{}\t{}\t".format(i, j, gf[0].strip()))
+
+                    # Add the group file's keyphrases
+                    keyphrases += gf[1].strip() + ' '
+
+                    # Split the members' IDs and get their keyphrases
+                    # print(i, j)
+                    jv = j.split()
+                    for j in (jv):
+                        mf = csv_lines[int(j)].split('\t')
+                        keyphrases += mf[1].strip() + ' '
+                    keyphrases = ''.join(filter(lambda x: x in string.printable, keyphrases))
+                    fout.write("{}\n".format(keyphrases))
+
+
 # - Functions - End -----------------------------------------------------------------
 # the main:
 if __name__ == '__main__':
@@ -664,7 +896,10 @@ if __name__ == '__main__':
     2. Split the pairs array into chunks based on the number of CPUs used.
     """
     # Temporary test functions. Will exit after calling the function
-    # sys.ext()
+    read_csv()
+    create_super_group()
+    test_intra_group()
+    sys.exit()
     # ------------------------
     # Read the CSV files and create a dict of doc_segments, where the keys are the filenames
     # and the values are the key phrases concatenated together.
@@ -715,13 +950,13 @@ if __name__ == '__main__':
         # pair_wise = False
         # Do one-to-one comparision of n0 to n_compare lines against the reference group
         par_compare_groups(keys_list, nb, ne)
-        with open("Files/i_ij_arrays.txt", "a", encoding="utf8") as f:
-            ls = [e for i, e in enumerate(i_array) if e != 0]
-            print(ls)
-            f.write("{}\n".format(ls[:]))
-            ls = [e for i, e in enumerate(ij_array) if e != 0]
-            print(ls)
-            f.write("{}\n".format(ls[:]))
+        # with open("Files/i_ij_arrays.txt", "a", encoding="utf8") as f:
+        ls = [e for i, e in enumerate(i_array) if e != 0]
+        print(ls)
+        # f.write("{}\n".format(ls[:]))
+        ls = [e for i, e in enumerate(ij_array) if e != 0]
+        print(ls)
+        # f.write("{}\n".format(ls[:]))
         # print(i_array[:])
         # print(j_array[:])
         # print(ij_array[:])
