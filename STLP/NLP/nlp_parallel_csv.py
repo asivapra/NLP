@@ -40,7 +40,11 @@ cst = 0.93 # Threshold for CS score
 ct0 = 0  # Start time
 pt = time.perf_counter()
 doc_segments = OrderedDict()
+groups = OrderedDict()
 skip_pair = 1  # Skip a pair if its members are in either 'group' or 'member' list.
+csv_lines = []
+groups_and_members = []
+super_group_lines = []
 
 
 def read_dictionary():
@@ -191,19 +195,22 @@ def elapsedTime(text):
     pt = ct
 
 
-def p(s1='', s2=''):
+def p(*args):
     """
     Print the line number and sent text strings. Useful for debugging.
     :param s1: If empty, print "Debug marker"
     :param s2: Can be empty
     :return: None
     """
-    if s1 is '':
-        s1 = 'Debug marker'
+    text = ''
+    # if s1 is '':
+    #     s1 = 'Debug marker'
     caller = getframeinfo(stack()[1][0])
     print("Line {}:".format(caller.lineno), end='')
-    print(s1, s2)
-
+    for x in args:
+        print(x, end='')
+    # print(s1, s2)
+    print('')
 
 def write_out_csv_groups():
     # i_array = [485, 558, 581, 532, 487, 561, 546, 563, 494, 590, 537, 552, 568, 556, 541, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -577,7 +584,7 @@ def read_csv():
     KeyPhraseLocation	KeyPhraseLocation@type	PartitionKey	RowKey	SourceFileName
     body | Edm.String | https:||qsaqutpoc...200109.doc| training program initiative | 11599293_Meeting Report - RTI Training 200109.DOC
 
-    Several rows of keyphrases for the same source file. These are appended, with spaces, into a long text string
+    Several rows of key_phrases for the same source file. These are appended, with spaces, into a long text string
     and added to a global OrderedDict, 'doc_segments', using the source file name as the key. OrderedDict is used
     instead of normal dict so that the order of filenames in the CSV is maintained in the data structure. It helps
     to manually check the results.
@@ -596,7 +603,7 @@ def read_csv():
             line_count = 0
             for row in csv_reader:
                 filename = ''.join(filter(lambda x: x in string.printable, row[4]))
-                keyphrases = ''.join(filter(lambda x: x in string.printable, row[3]))
+                key_phrases = ''.join(filter(lambda x: x in string.printable, row[3]))
                 # Skip the header row
                 if line_count == 0:
                     # Add a blank line as first item.
@@ -608,17 +615,14 @@ def read_csv():
                     try:
                         # This will give an error if the key is not yet defined. If so, the except block will add a new key.
                         # Subsequent values are appended
-                        # filename = ''.join(filter(lambda x: x in string.printable, row[4]))
-                        # keyphrases = ''.join(filter(lambda x: x in string.printable, row[3]))
+                        # key_phrases = ''.join(filter(lambda x: x in string.printable, row[3]))
 
-                        # doc_segments[filename] += filename + ' '  # Add the filename to the keyphrases
-                        doc_segments[filename] += keyphrases + ' '
+                        doc_segments[filename] += key_phrases + ' '
                     except Exception as e:
-                        # filename = ''.join(filter(lambda x: x in string.printable, row[4]))
-                        # keyphrases = ''.join(filter(lambda x: x in string.printable, row[3]))
+                        # key_phrases = ''.join(filter(lambda x: x in string.printable, row[3]))
                         # The first value is assigned to the key
-                        doc_segments[filename] = filename + ' '  # Add the filename to the keyphrases
-                        doc_segments[filename] += keyphrases + ' '
+                        doc_segments[filename] = filename + ' '  # Add the filename to the key_phrases
+                        doc_segments[filename] += key_phrases + ' '
         elapsedTime("Reading the CSV")
     if write_processed_file:
         processed_file = "Files/processed_file.txt"
@@ -664,8 +668,8 @@ def merge_groups_ids():
     p(lines)
 
 
-def remove_from_groups_and_members(i, j):
-    global csv_lines, groups_and_members
+def remove_from_members(i, j):
+    global csv_lines, groups_and_members, super_group_lines
     print(len(groups_and_members), i, j, ' ', end='')
     for k in range(1, len(groups_and_members)):
         fields = groups_and_members[k].split('\t')
@@ -687,8 +691,7 @@ def remove_from_groups_and_members(i, j):
             break
 
 
-
-def test_original_group(i, j):
+def match_original_group(i, j):
     global csv_lines, groups_and_members
     gl = csv_lines[i].split('\t')
     gm = csv_lines[j].split('\t')
@@ -703,22 +706,15 @@ def test_original_group(i, j):
     print("Checking again:", end='')
     stars = '--------- OK'
     if cs < 0.94:
-        remove_from_groups_and_members(i, j)
+        remove_from_members(i, j)
         stars = 'xxxxxxxx Not OK'
         print(cs, stars)
     else:
         print(i, j, cs, stars)
 
 
-
-def test_intra_group():
-    """
-    Test a group's members against its own super group keyphrases
-    e.g. group id 1 against ['15', '66', '77', ... ]
-    :return:
-    """
-    global csv_lines, groups_and_members
-    read_dictionary()
+def read_group_data():
+    global csv_lines, groups_and_members, super_group_lines
     infile = "Files/processed_file.txt"
     with open(infile, encoding="utf8") as f:
         csv_lines = f.readlines()
@@ -729,48 +725,185 @@ def test_intra_group():
 
     infile = "Files/super_groups.txt"
     with open(infile, encoding="utf8") as f:
-        lines = f.readlines()
-        # for line in lines:
-        for n in range (0, len(lines)):
-            # line = lines[n]
-            fields = lines[n].split('\t')
-            i = int(fields[0])
-            # if i is not 3: continue
-            jv = fields[1].split()
-            jvl = len(jv)
-            if jvl > 10:
-                jvl = 10
-            # gf = fields[2]
-            keyphrases = fields[3].strip()
-            print(i, jv[:jvl])
-            doc1 = Lemmatise(keyphrases)
-            doc1str = " ".join(doc1)
-            doc1nlp = nlp(doc1str)
-            # p(i, csv_lines[i])
-            # break
+        super_group_lines = f.readlines()
+
+
+def consolidate_matches():
+    """
+    Process the output from 'inter_group_matching' to combine groups and members.
+
+    - Read col1 for primary group.
+    - Add all in col2 as members for this primary group.
+    - Iterate through the col2 members and take their col2 lists and add.
+    - Iterate col2 of primary group with col2 of ALL and take their primary groups.
+    - Sort and remove duplicates.
+    :return:
+    """
+    infile = "Files/inter_group_matches_positives.txt"
+    with open(infile, encoding="utf8") as f:
+        inter_group_matches_positives = f.readlines()
+        lg = len(inter_group_matches_positives)
+        # p(inter_group_matches_positives)
+        fields = inter_group_matches_positives[1].split('\t')
+        cg = int(fields[0])  # Current col1 group
+        groups[cg] = ''
+        for k in range (1, lg):
+            fields = inter_group_matches_positives[k].split('\t')
+            a = int(cg)
+            b = int(fields[0])
+            # p(type(fields[0]), type(cg), cg, ' ', fields[0])
+            if a == b:
+                # p('OK')
+                groups[cg] += fields[1] + ' '  # Add the col2 groups
+            else:
+                # p(cg, ' ', groups[cg])
+                cg = int(fields[0])  # Current col1 group
+                groups[cg] = fields[1] + ' '
+        p(groups)
+        keys = groups.keys()
+        # for key in keys:
+        #     print(groups[key])
+
+        # Take the members of the col2 groups to col1 group
+        for cg in groups.keys():
+            # p(cg, ":", groups[cg])
+            jv = groups[cg].split()
             for j in jv:
-                fields = csv_lines[int(j)].split('\t')
-                doc2 = Lemmatise(fields[1].strip())
-                doc2str = " ".join(doc2)
-                doc2nlp = nlp(doc2str)
-                sim = doc1nlp.similarity(doc2nlp)
-                stars = ''
-                cs = round(sim, 2)
-                if cs < 0.94:
-                    stars = '*******'
-                    # print(i, j, cs, stars)
-                    test_original_group(i, int(j))
-                else:
-                    # print(i, j, cs)
+                try:
+                    # col2 = groups[int(j)]
+                    groups[cg] += groups[int(j)]
+                    groups[int(j)] = ''
+                    # print(cg, ' ', j, ' ', col2)
+                except:
                     pass
-                # p(j, fields[1])
-                # break
+            gcg = groups[cg].split()
+            gcg = [int(x) for x in gcg]
+            gcg = sorted(set(gcg))
+            groups[cg] = gcg
+            # p(cg, ' ', groups[cg])
+            # p(cg, ' ', gcg)
+        #     pass
+        empty = []
+        for cg in groups.keys():
+            jv = groups[cg]
+            # p(cg, jv)
+            if len(jv) == 0:
+                empty.append(cg)
+        gk = list(groups.keys())
+        lg = len(gk)
+        p(lg, gk)
+        for e in empty:
+            del groups[e]
+        p(len(groups.keys()))
+        gk = list(groups.keys())
+        lg = len(gk)
+        p(lg, gk)
+        for i in range(lg):
+            key = gk[i]
+            p(i, ' ', key)
+            p(i, ' ', key, ' ', groups[gk[key]])
+            for j in groups[gk[key]]:
+                pass
+
+
+
+def inter_group_matching():
+    """
+    Test a group against the 'super_groups.txt' for all other groups.
+
+    If any match, then add the group ID and all its members to the other matching group ID.
+    :return:
+    """
+    global csv_lines, groups_and_members, super_group_lines
+    read_group_data()
+    read_dictionary()
+    k0 = 0
+    for n in range(0, len(super_group_lines)):
+        fields = super_group_lines[n].split('\t')
+        i = int(fields[0])
+        key_phrases = fields[3].strip()
+        doc1 = Lemmatise(key_phrases)
+        doc1str = " ".join(doc1)
+        doc1nlp = nlp(doc1str)
+        k2 = 0
+        for k in range(n+1, len(super_group_lines)):
+            fields = super_group_lines[k].split('\t')
+            j = int(fields[0])
+            fields = csv_lines[j].split('\t')
+            doc2 = Lemmatise(fields[1].strip())
+            doc2str = " ".join(doc2)
+            doc2nlp = nlp(doc2str)
+            sim = doc1nlp.similarity(doc2nlp)
+            cs = round(sim, 2)
+            if cs > 0.93:
+                print(i, ':', j, ':', cs, '**********')
+                k2 += 1
+                k0 += 1
+            else:
+                print(i, ':', j, ':', cs)
+        print("Matches: Total: {}; This group: {}\n".format(k0, k2))
+
             # break
-        # print(groups_and_members)
-        outfile = "Files/groups_and_members.txt"
-        with open(outfile, 'w', encoding="utf8") as f:
-            for line in groups_and_members:
-                f.write(line)
+
+
+def intra_group_matching():
+    """
+    Test a group's members against its own super group key_phrases.
+
+    From 'super_groups.txt' take the key_phrases for a group and match against the key_phrases from
+    'processed_files.txt' for its members.
+    e.g. for group id=1 take the key_phrases from row 1 in 'super_groups.txt'
+
+    Then, take the key_phrases for its members ['15', '66', '77', ... ] from 'processed_files.txt'
+
+    The expectation is that all members must score above threshold. Those which do not score above
+    are matched again by taking the key_phrases for BOTH the group and member ID from 'processed_files.txt'.
+
+    If still below threshold, then delete the member ID from 'groups_and_members.txt'
+    :return:
+    """
+    global csv_lines, groups_and_members, super_group_lines
+    read_group_data()
+    read_dictionary()
+    # infile = "Files/processed_file.txt"
+    # with open(infile, encoding="utf8") as f:
+    #     csv_lines = f.readlines()
+    #
+    # infile = "Files/groups_and_members.txt"
+    # with open(infile, encoding="utf8") as f:
+    #     groups_and_members = f.readlines()
+    #
+    # infile = "Files/super_groups.txt"
+    # with open(infile, encoding="utf8") as f:
+    #     super_group_lines = f.readlines()
+        # for line in lines:
+    for n in range (0, len(super_group_lines)):
+        fields = super_group_lines[n].split('\t')
+        i = int(fields[0])
+        jv = fields[1].split()
+        jvl = len(jv)
+        if jvl > 10:
+            jvl = 10
+        key_phrases = fields[3].strip()
+        print(i, jv[:jvl])
+        doc1 = Lemmatise(key_phrases)
+        doc1str = " ".join(doc1)
+        doc1nlp = nlp(doc1str)
+        for j in jv:
+            fields = csv_lines[int(j)].split('\t')
+            doc2 = Lemmatise(fields[1].strip())
+            doc2str = " ".join(doc2)
+            doc2nlp = nlp(doc2str)
+            sim = doc1nlp.similarity(doc2nlp)
+            cs = round(sim, 2)
+            if cs < 0.94:
+                match_original_group(i, int(j))
+            else:
+                pass
+    outfile = "Files/groups_and_members.txt"
+    with open(outfile, 'w', encoding="utf8") as f:
+        for line in groups_and_members:
+            f.write(line)
 
 def test_super_group_0():
     read_dictionary()
@@ -821,7 +954,7 @@ def sort_groups_and_members():
 def create_super_group():
     """
     To create a master doc, we can try this method:
-•	Concatenate the keyphrases for a group and all its members.
+•	Concatenate the key_phrases for a group and all its members.
 •	Remove duplicates or keep the duplicates.
 •	Lemmatise or let the program do it on the fly.
 •	Compare the group and all its members against this master doc.
@@ -832,7 +965,7 @@ def create_super_group():
 
     # i = 0
     # j = 0
-    # keyphrases = ''
+    # key_phrases = ''
     # csv_lines = []
 
     # Read the input file. This is created by 'def read_csv'
@@ -864,7 +997,7 @@ def create_super_group():
 
                     # Get the members' list for the group ID. This is a space-separated string of numbers
                     j = row[1]
-                    keyphrases = ''
+                    key_phrases = ''
 
                     # Get the group file and take its filename
                     gf = csv_lines[i].split('\t')
@@ -873,17 +1006,17 @@ def create_super_group():
                     # Write the group filename in column A
                     fout.write("{}\t{}\t{}\t".format(i, j, gf[0].strip()))
 
-                    # Add the group file's keyphrases
-                    keyphrases += gf[1].strip() + ' '
+                    # Add the group file's key_phrases
+                    key_phrases += gf[1].strip() + ' '
 
-                    # Split the members' IDs and get their keyphrases
+                    # Split the members' IDs and get their key_phrases
                     # print(i, j)
                     jv = j.split()
                     for j in (jv):
                         mf = csv_lines[int(j)].split('\t')
-                        keyphrases += mf[1].strip() + ' '
-                    keyphrases = ''.join(filter(lambda x: x in string.printable, keyphrases))
-                    fout.write("{}\n".format(keyphrases))
+                        key_phrases += mf[1].strip() + ' '
+                    key_phrases = ''.join(filter(lambda x: x in string.printable, key_phrases))
+                    fout.write("{}\n".format(key_phrases))
 
 
 # - Functions - End -----------------------------------------------------------------
@@ -896,9 +1029,11 @@ if __name__ == '__main__':
     2. Split the pairs array into chunks based on the number of CPUs used.
     """
     # Temporary test functions. Will exit after calling the function
-    read_csv()
-    create_super_group()
-    test_intra_group()
+    # read_csv()
+    # create_super_group()
+    # intra_group_matching()
+    # inter_group_matching()
+    consolidate_matches()
     sys.exit()
     # ------------------------
     # Read the CSV files and create a dict of doc_segments, where the keys are the filenames
