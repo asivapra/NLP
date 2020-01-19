@@ -728,6 +728,12 @@ def read_group_data():
         super_group_lines = f.readlines()
 
 
+def display_groups(groups):
+    for cg in groups.keys():
+        jv = groups[cg]
+        print("{}\t{}".format(cg, jv))
+
+
 def consolidate_matches():
     """
     Process the output from 'inter_group_matching' to combine groups and members.
@@ -747,7 +753,7 @@ def consolidate_matches():
         fields = inter_group_matches_positives[1].split('\t')
         cg = int(fields[0])  # Current col1 group
         groups[cg] = ''
-        for k in range (1, lg):
+        for k in range(1, lg):
             fields = inter_group_matches_positives[k].split('\t')
             a = int(cg)
             b = int(fields[0])
@@ -759,8 +765,9 @@ def consolidate_matches():
                 # p(cg, ' ', groups[cg])
                 cg = int(fields[0])  # Current col1 group
                 groups[cg] = fields[1] + ' '
-        p(groups)
-        keys = groups.keys()
+        # display_groups(groups)
+        # sys.exit(0)
+        # keys = groups.keys()
         # for key in keys:
         #     print(groups[key])
 
@@ -789,21 +796,35 @@ def consolidate_matches():
             # p(cg, jv)
             if len(jv) == 0:
                 empty.append(cg)
-        gk = list(groups.keys())
-        lg = len(gk)
-        p(lg, gk)
+        # gk = list(groups.keys())
+        # lg = len(gk)
+        # p(lg, gk)
         for e in empty:
             del groups[e]
-        p(len(groups.keys()))
+        # display_groups(groups)
+        # sys.exit(0)
+        # p(len(groups.keys()))
         gk = list(groups.keys())
         lg = len(gk)
-        p(lg, gk)
-        for i in range(lg):
+        for i in range(0, lg-1):
             key = gk[i]
-            p(i, ' ', key)
-            p(i, ' ', key, ' ', groups[gk[key]])
-            for j in groups[gk[key]]:
-                pass
+            iv = groups[key]
+            # p("i, iv:", i, iv)
+            # if not iv: continue
+            for j in range(i+1, lg):
+                for k in iv:
+                    key1 = gk[j]
+                    jv = groups[key1]
+                    if k in jv:
+                        p(key, ' ', k, ':', key1)
+                        groups[key] += jv
+                        groups[key1] = []
+                        break
+        display_groups(groups)
+        # sys.exit(0)
+
+
+
 
 
 
@@ -1028,18 +1049,20 @@ if __name__ == '__main__':
         ['0,1', '0,2', '0,3', '0,4', '1,2', '1,3', '1,4', '2,3', '2,4', '3,4', ...]
     2. Split the pairs array into chunks based on the number of CPUs used.
     """
-    # Temporary test functions. Will exit after calling the function
+    # Second stage functions. Will exit after calling the function
     # read_csv()
     # create_super_group()
     # intra_group_matching()
-    # inter_group_matching()
-    consolidate_matches()
+    inter_group_matching()
+    # consolidate_matches()
     sys.exit()
     # ------------------------
     # Read the CSV files and create a dict of doc_segments, where the keys are the filenames
     # and the values are the key phrases concatenated together.
     # merge_groups_ids()  # The inter-group comparison gave several matches. Combine these in groups_and_members.txt
     # sys.exit(0)
+
+    # First stage functions
     read_csv()
     # Take the keys into an array
     keys_list = list(doc_segments.keys())
@@ -1085,16 +1108,10 @@ if __name__ == '__main__':
         # pair_wise = False
         # Do one-to-one comparision of n0 to n_compare lines against the reference group
         par_compare_groups(keys_list, nb, ne)
-        # with open("Files/i_ij_arrays.txt", "a", encoding="utf8") as f:
         ls = [e for i, e in enumerate(i_array) if e != 0]
         print(ls)
-        # f.write("{}\n".format(ls[:]))
         ls = [e for i, e in enumerate(ij_array) if e != 0]
         print(ls)
-        # f.write("{}\n".format(ls[:]))
-        # print(i_array[:])
-        # print(j_array[:])
-        # print(ij_array[:])
         rewrite_groups_and_members()
     elif list_wise:
         """
@@ -1107,15 +1124,12 @@ if __name__ == '__main__':
         The displayed results are then copied and added to the end in Files/groups_and_members.xlsx and
         exported as Files/groups_and_members.txt for further runs. 
         """
-        # write_out_csv_groups()
         par_compare_list(keys_list, nb, ne)
         print(i_array[:])
         print(ij_array[:])
         with open("Files/i_ij_arrays.txt", "a", encoding="utf8") as f:
             f.write("{}\n".format(i_array[:]))
             f.write("{}\n".format(ij_array[:]))
-        p("-----------------------------------")
-        # write_out_csv_groups()
 
     et1 = time.perf_counter() - ct0
     print("Total Time: {:0.2f} sec".format(et1))
